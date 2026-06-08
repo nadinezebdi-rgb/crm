@@ -1,0 +1,44 @@
+{
+  "summary": "End-to-end testing of FormaPro MVP. Backend: 26/26 pytest cases pass (auth, CRUD for 5 resources, sessions w/ progression+status+CRUD, dashboard stats/calendar, 8 PDF doc types). Frontend: full happy path validated (login, dashboard KPIs, sessions kanban + list + search, 4-step session creation -> detail w/ 4 tabs, progression toggle, 8 doc generate links, Apprenants list + create dialog, Paramètres 8 sections, user-menu logout). No blocking issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORSMiddleware", "issue": "allow_origins=['*'] combined with allow_credentials=True is a spec violation; FastAPI mitigates by echoing the request origin, but production deployments behind strict proxies may break. Pin to explicit origins."},
+      {"endpoint": "/api/auth/logout", "issue": "Only clears cookies; JWT access_token remains valid until exp (8h). Acceptable for MVP but consider a token blacklist for security-sensitive deployments."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard 'Sessions par statut' chart", "issues": ["Recharts ResponsiveContainer logs 'width(-1) and height(-1)' warnings on first render; chart still renders but parent likely lacks explicit minHeight. Add minHeight on the container."]},
+      {"screen": "Paramètres", "issues": ["All 8 sections render correctly (false-negative in initial keyword scan: real labels are 'Modèles de documents' and \"Modèles d'e-mails\")."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_formapro.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: replace CORS allow_origins=['*'] with explicit REACT_APP_BACKEND_URL-derived origin when credentials are used.",
+    "Optional: add minHeight to ResponsiveContainer parent on Dashboard chart to silence recharts warnings.",
+    "Optional: consider JWT blacklist or short-lived access token + refresh rotation for production hardening."
+  ],
+  "critical_code_review_comments": [
+    "server.py is a 875-line monolith; once stable, split into routers (auth, crud_factory, sessions, dashboard, documents, seed) to keep <700 lines per file.",
+    "Generic CRUD factory writes payload.model_dump() on PUT without preserving created_at/id - but $set ignores fields not in dict for id since id is the matcher, and created_at is silently overwritten only if present in payload (it isn't in any payload model). Safe but worth documenting.",
+    "PDF generation endpoint is synchronous (ReportLab) inside an async handler; for large docs this will block the event loop. Run via run_in_executor when scaling.",
+    "CORS: allow_origins=['*'] + allow_credentials=True is contradictory per CORS spec; explicit origin list recommended.",
+    "Auth dependency get_current_user does a DB lookup on every request - consider caching or trusting the JWT claims for read-only checks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_formapro.py (created)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@formapro.fr / admin123 (seeded automatically). Note: /app/memory/test_credentials.md is missing - main agent should create it for future iterations.",
+  "seed_data_creation": "Demo data auto-seeded by backend on startup (3 entreprises, 3 formateurs, 5 apprenants, 3 financeurs, 3 lieux, 4 sessions). No additional seed required for tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_formapro.py covers full regression. Run: pytest /app/backend/tests/test_formapro.py -v. Frontend critical path validated via Playwright; all data-testid hooks present and working (login-submit, kpi-*, nav-sessions, column-*, view-list-btn, sessions-search, new-session-btn, step-general, step-next, session-save, tab-*, toggle-convocations, generate-{8 types}, user-menu-trigger, logout-btn). Recharts warning is cosmetic.",
+  "rca of the issue": "N/A - no functional issues found. Initial Playwright run had a wait_for_url('**/sessions/nouveau') that timed out because navigation was already complete (race condition in test, not app). Switched to wait_for_selector and full happy path succeeded."
+}
