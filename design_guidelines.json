@@ -1,0 +1,88 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) tailored for French B2B SaaS",
+  "domain": "B2B SaaS / Organisme de Formation (Qualiopi compliance)",
+  "typography": {
+    "headings": "Cabinet Grotesk",
+    "body": "IBM Plex Sans",
+    "sizing": {
+      "h1": "text-4xl tracking-tight font-semibold text-slate-900",
+      "h2": "text-2xl tracking-tight font-medium text-slate-900",
+      "h3": "text-xl tracking-tight font-medium text-slate-900",
+      "body": "text-sm text-slate-600 leading-relaxed",
+      "labels": "text-xs font-semibold uppercase tracking-widest text-slate-500"
+    }
+  },
+  "color_palette": {
+    "primary": "#2563EB",
+    "primary_hover": "#1D4ED8",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "text_main": "#0F172A",
+    "text_muted": "#64748b",
+    "border": "#E2E8F0",
+    "statuses": {
+      "brouillons": "bg-slate-100 text-slate-700 border-slate-200",
+      "planification": "bg-amber-50 text-amber-700 border-amber-200",
+      "planifiees": "bg-blue-50 text-blue-700 border-blue-200",
+      "terminees": "bg-emerald-50 text-emerald-700 border-emerald-200",
+      "archivees": "bg-neutral-100 text-neutral-600 border-neutral-200"
+    }
+  },
+  "spacing_and_layout": {
+    "grid_strategy": "Control Room Grid (Dense, functional, gap-4 to gap-6). High data density but breathable.",
+    "surfaces": "Grid Borders (Technical look). Flat backgrounds, 1px subtle border, max 8px radius (rounded-md). Avoid glassmorphism for health/business logic data.",
+    "sidebar": "Vertical, icon-centric, w-16 or w-64 expanded. Solid white with border-r.",
+    "topbar": "Sticky, h-16, solid white background with bottom border border-slate-200. Contains global search, notifications, profile.",
+    "padding": "Generous inside widgets (p-6). Dashboard wrapper (p-8)."
+  },
+  "components_strategy": {
+    "general": "Use Shadcn UI extensively. Go cardless or rectangular/dense styles. Override default rounding to max-w-sm or rounded-md.",
+    "kanban": "Flex or Grid columns. Cards inside should have 1px border, hover:-translate-y-1 hover:shadow-md transition-all. Use badges for status.",
+    "data_table": "Dense rows. text-sm. Hover effect on rows. Left-aligned text.",
+    "forms": "Multi-step form for session creation. Use Shadcn form, input, select. Clear stepper indicator.",
+    "tabs": "Fiche session requires 4 tabs. Use Shadcn Tabs, override h-9 to h-auto. Minimalist tab triggers (border-b-2 active state)."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "usage": "Use Duotone or Regular weight. 24px for sidebar, 16px/20px for inline elements."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1654277041218-84424c78f0ae?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxzdGFydHVwJTIwbG9nbyUyMGRlc2lnbnxlbnwwfHx8fDE3ODA5NDUzMDB8MA&ixlib=rb-4.1.0&q=85",
+      "category": "entreprise_logo",
+      "description": "Company logo placeholder for client organizations (GitHub dice)"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1669220339242-c12788586902?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwyfHxzdGFydHVwJTIwbG9nbyUyMGRlc2lnbnxlbnwwfHx8fDE3ODA5NDUzMDB8MA&ixlib=rb-4.1.0&q=85",
+      "category": "entreprise_logo",
+      "description": "Company logo placeholder for client organizations (Anduril dice)"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w7NDQ2NDN8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MDkzMjY2MHww&ixlib=rb-4.1.0&q=85",
+      "category": "user_avatar",
+      "description": "Profile picture for female learner/trainer"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w7NDQ2NDN8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MDkzMjY2MHww&ixlib=rb-4.1.0&q=85",
+      "category": "user_avatar",
+      "description": "Profile picture for male learner/trainer"
+    }
+  ],
+  "accessibility_and_interactions": {
+    "focus_states": "focus:ring-2 focus:ring-blue-500 focus:outline-none focus-visible:ring-2",
+    "hover_states": "Buttons and links must explicitly define hover colors (e.g., hover:bg-blue-700 hover:text-white). Use transition-colors duration-200.",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='login-btn')."
+  },
+  "instructions_to_main_agent": [
+    "Write all React components using .js or .jsx extensions (DO NOT USE .tsx or TypeScript).",
+    "Run yarn add @phosphor-icons/react recharts clsx tailwind-merge to ensure dependencies are present.",
+    "Implement Shadcn UI primitives inside src/components/ui/ manually or via CLI, but ensure they are .js files.",
+    "Create a persistent layout with a vertical sidebar on the left and a sticky top header.",
+    "Main views: Dashboard (KPI cards + Bar/Line Recharts), Sessions (Kanban board / List toggle), Session Details (4 tabs), Directory (table).",
+    "Use mocked data heavily for MVP since backend integration isn't fully ready (sessions, apprenants, formateurs).",
+    "Inject 'Cabinet Grotesk' and 'IBM Plex Sans' via standard HTML link tags in index.html.",
+    "Design rule: Avoid generic 'purple gradients'. Stick strictly to the blue/slate high-contrast palette provided.",
+    "For the Qualiopi checklist, use clear visual indicators (green checkmarks, progress bars) within the Progression tab."
+  ]
+}
