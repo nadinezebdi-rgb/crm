@@ -691,6 +691,13 @@ class EdofCommitPayload(BaseModel):
     rows: List[Dict[str, Any]]
     mapping: Dict[str, Optional[str]]
     create_sessions: bool = True
+    groupement: Literal["mois", "exact"] = "mois"
+
+
+MOIS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
 
 
 @api.post("/import/edof/preview")
@@ -803,17 +810,33 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
                 continue
             d1 = parse_date_fr(val(row, "date_debut"))
             d2 = parse_date_fr(val(row, "date_fin"))
-            key = (formation.lower(), d1 or "", d2 or "")
+            if payload.groupement == "mois" and d1:
+                mois = d1[:7]  # YYYY-MM
+                annee, num_mois = mois.split("-")
+                nom_session = f"{formation} — {MOIS_FR[int(num_mois) - 1]} {annee}"
+                key = (formation.lower(), mois)
+            else:
+                nom_session = formation
+                key = (formation.lower(), d1 or "", d2 or "")
             group = session_groups.setdefault(key, {
-                "nom": formation, "date_debut": d1, "date_fin": d2,
+                "nom": nom_session, "date_debut": d1, "date_fin": d2,
                 "apprenants": [], "total": 0.0,
             })
+            # Bornes du groupe : du premier départ à la dernière fin
+            if d1 and (not group["date_debut"] or d1 < group["date_debut"]):
+                group["date_debut"] = d1
+            if d2 and (not group["date_fin"] or d2 > group["date_fin"]):
+                group["date_fin"] = d2
             if apprenant_id not in group["apprenants"]:
                 group["apprenants"].append(apprenant_id)
                 group["total"] += parse_amount(val(row, "prix"))
 
     for group in session_groups.values():
-        query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}, "date_debut": group["date_debut"]}
+        if payload.groupement == "mois":
+            # Le nom embarque le mois → correspondance par nom uniquement (ré-import stable)
+            query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}}
+        else:
+            query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}, "date_debut": group["date_debut"]}
         existing = await db.sessions.find_one(query, {"_id": 0, "id": 1, "apprenants": 1})
         if existing:
             new_ids = [a for a in group["apprenants"] if a not in existing.get("apprenants", [])]

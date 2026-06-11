@@ -24,6 +24,7 @@ export default function ImportEdofDialog({ onDone }) {
   const [preview, setPreview] = useState(null);
   const [mapping, setMapping] = useState({});
   const [createSessions, setCreateSessions] = useState(true);
+  const [groupement, setGroupement] = useState("mois");
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
 
