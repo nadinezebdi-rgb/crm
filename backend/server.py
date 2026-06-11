@@ -26,10 +26,8 @@ from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
-from reportlab.lib import colors
+
+from documents import build_pdf, DOC_BUILDERS
 
 # ---------------------------------------------------------------------------
 # Config
@@ -670,85 +668,21 @@ async def update_organisme(payload: OrganismeSettings, user: dict = Depends(get_
     await db.organisme_settings.update_one(
         {"key": "organisme"}, {"$set": payload.model_dump()}, upsert=True
     )
-    return await get_organisme()
 
 
 # ---------------------------------------------------------------------------
-# Document generation (PDF) — basic ReportLab
+# Documents PDF réglementaires (voir documents.py)
 # ---------------------------------------------------------------------------
-def build_pdf(title: str, lines: List[str], org: dict) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    width, height = A4
-
-    # Header band — Blade navy + cyan accent
-    c.setFillColor(colors.HexColor("#0B1726"))
-    c.rect(0, height - 3 * cm, width, 3 * cm, fill=1, stroke=0)
-    c.setFillColor(colors.HexColor("#4FC0EE"))
-    c.rect(0, height - 3.12 * cm, width, 0.12 * cm, fill=1, stroke=0)
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(2 * cm, height - 1.7 * cm, (org.get("nom") or "Blade Academy").upper())
-    c.setFillColor(colors.HexColor("#4FC0EE"))
-    c.setFont("Helvetica", 9)
-    qualiopi = f"Organisme de formation certifié Qualiopi N° {org['qualiopi_numero']}" if org.get("qualiopi_numero") else "Organisme de formation certifié Qualiopi"
-    c.drawString(2 * cm, height - 2.3 * cm, qualiopi)
-    # Coordonnées à droite
-    c.setFillColor(colors.HexColor("#CBD5E1"))
-    c.setFont("Helvetica", 8)
-    right_lines = [
-        f"{org.get('adresse', '')}, {org.get('code_postal', '')} {org.get('ville', '')}".strip(", "),
-        f"{org.get('telephone', '')} — {org.get('email', '')}".strip(" —"),
-        org.get("site_web", ""),
-    ]
-    ry = height - 1.4 * cm
-    for rl in right_lines:
-        if rl:
-            c.drawRightString(width - 2 * cm, ry, rl)
-            ry -= 0.45 * cm
-
-    # Title
-    c.setFillColor(colors.HexColor("#0F172A"))
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(2 * cm, height - 4.5 * cm, title)
-
-    # Body
-    c.setFont("Helvetica", 11)
-    y = height - 5.8 * cm
-    for line in lines:
-        if y < 3.4 * cm:
-            c.showPage()
-            y = height - 2 * cm
-        c.setFillColor(colors.HexColor("#0F172A"))
-        c.drawString(2 * cm, y, line[:110])
-        y -= 0.7 * cm
-
-    # Footer — mentions légales
-    c.setFillColor(colors.HexColor("#64748B"))
-    c.setFont("Helvetica", 7)
-    legal_parts = []
-    if org.get("nom"):
-        forme = f" ({org['forme_juridique']})" if org.get("forme_juridique") else ""
-        legal_parts.append(f"{org['nom']}{forme}")
-    if org.get("siret"):
-        legal_parts.append(f"SIRET {org['siret']}")
-    if org.get("rcs"):
-        legal_parts.append(f"RCS {org['rcs']}")
-    if org.get("tva"):
-        legal_parts.append(f"TVA {org['tva']}")
-    c.drawString(2 * cm, 2.1 * cm, " · ".join(legal_parts))
-    if org.get("nda"):
-        region = f" auprès du préfet de région {org['nda_region']}" if org.get("nda_region") else ""
-        c.drawString(2 * cm, 1.7 * cm, f"Déclaration d'activité enregistrée sous le numéro {org['nda']}{region}. Cet enregistrement ne vaut pas agrément de l'État.")
-    c.setFont("Helvetica", 8)
-    c.drawString(2 * cm, 1.2 * cm, f"Document généré le {now_utc().strftime('%d/%m/%Y à %H:%M UTC')}")
-    qualiopi_footer = f"Qualiopi N° {org['qualiopi_numero']}" if org.get("qualiopi_numero") else "Conforme Qualiopi"
-    certif = f" — {org['qualiopi_certificateur']}" if org.get("qualiopi_certificateur") else ""
-    c.drawRightString(width - 2 * cm, 1.2 * cm, f"{qualiopi_footer}{certif}")
-
-    c.save()
-    buf.seek(0)
-    return buf.read()
+DOC_TITLES = {
+    "convention": "Convention de formation professionnelle",
+    "contrat": "Contrat de formation",
+    "convocation": "Convocation à la formation",
+    "attestation": "Attestation de fin de formation",
+    "facture": "Facture",
+    "emargement": "Feuille d'émargement",
+    "programme": "Programme de formation",
+    "evaluation": "Évaluation de la formation",
+}
 
 
 @api.get("/documents/session/{session_id}/{doc_type}")
@@ -756,44 +690,30 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
     session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session introuvable")
-
-    valid = {
-        "convention": "Convention de formation professionnelle",
-        "contrat": "Contrat de formation",
-        "convocation": "Convocation à la formation",
-        "attestation": "Attestation de fin de formation",
-        "facture": "Facture",
-        "emargement": "Feuille d'émargement",
-        "programme": "Programme de formation",
-        "evaluation": "Évaluation de la formation",
-    }
-    if doc_type not in valid:
+    if doc_type not in DOC_BUILDERS:
         raise HTTPException(status_code=400, detail="Type de document invalide")
 
-    lines = [
-        f"Session : {session['nom']}",
-        f"Code interne : {session.get('code_interne', '-')}",
-        f"Type d'action : {session.get('type_action', '-')}",
-        f"Date de début : {session.get('date_debut') or 'À définir'}",
-        f"Date de fin : {session.get('date_fin') or 'À définir'}",
-        f"Modalité : {'Distanciel' if session.get('distanciel') else 'Présentiel'}",
-        f"Prix HT : {session.get('prix_ht', 0):.2f} EUR",
-        "",
-        "Nombre de formateurs : %d" % len(session.get("formateurs", [])),
-        "Nombre d'apprenants : %d" % len(session.get("apprenants", [])),
-        "",
-        "Article 1 - Objet",
-        "Le présent document a valeur conformément à la réglementation Qualiopi.",
-        "Article 2 - Modalités",
-        "Le présent document est généré automatiquement par la plateforme Blade Academy.",
-    ]
-    org = await get_organisme()
-    pdf = build_pdf(valid[doc_type], lines, org)
+    ctx = {
+        "session": session,
+        "org": await get_organisme(),
+        "lieu": await db.lieux.find_one({"id": session["lieu_id"]}, {"_id": 0}) if session.get("lieu_id") else None,
+        "formateurs": await db.formateurs.find({"id": {"$in": session.get("formateurs", [])}}, {"_id": 0}).to_list(50),
+        "apprenants": await db.apprenants.find({"id": {"$in": session.get("apprenants", [])}}, {"_id": 0}).to_list(300),
+        "entreprise": await db.entreprises.find_one({"id": session["entreprise_id"]}, {"_id": 0}) if session.get("entreprise_id") else None,
+        "financeur": await db.financeurs.find_one({"id": session["financeur_id"]}, {"_id": 0}) if session.get("financeur_id") else None,
+    }
+    title, blocks = DOC_BUILDERS[doc_type](ctx)
+    pdf = build_pdf(title, blocks, ctx["org"])
     return StreamingResponse(
         io.BytesIO(pdf),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{doc_type}_{session.get("code_interne", session_id)}.pdf"'},
     )
+
+
+    return await get_organisme()
+
+
 
 
 # ---------------------------------------------------------------------------

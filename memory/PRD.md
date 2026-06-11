@@ -67,6 +67,21 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - Freemium + abonnement Stripe (free / pro / premium).
 - Multi-organismes (tenant isolation) pour SaaS multi-clients.
 
+## Documents PDF juridiques complets (v1.3 — 11 juin 2026)
+- Nouveau module `/app/backend/documents.py` : moteur de rendu par blocs (titres avec liseré cyan, paragraphes avec retour à la ligne auto, multi-pages avec pied de page légal sur chaque page, blocs de signature double cadre).
+- 8 modèles enrichis conformes Code du travail :
+  - **Convention** (L.6353-1/2) : 9 articles — objet/nature/durée, lieu, effectif (stagiaires listés), moyens pédagogiques, suivi/sanction, prix HT/TVA/TTC, règlement (D.441-5), dédit/annulation (>10j : 0%, <10j : 50%, abandon : 100%), litiges + double signature.
+  - **Contrat** (L.6353-3 à 7) : rétractation 10 jours, acompte max 30%, interruption prorata temporis.
+  - **Convocation** : horaires, consignes, référent handicap, stagiaires listés.
+  - **Attestation** (L.6353-1 al.2) : nature, durée, objectifs, résultats des acquis.
+  - **Facture** : n° FAC-{code}, HT/TVA 20%/TTC, échéance 30j, pénalités + indemnité 40 €, subrogation financeur.
+  - **Émargement** : lignes matin/après-midi par stagiaire, contreseing formateur.
+  - **Programme** : objectifs, prérequis, méthodes, évaluation, accessibilité handicap, tarif, délai d'accès (Qualiopi).
+  - **Évaluation à chaud** : 6 critères échelle 1-5, recommandation, commentaires.
+- Les documents résolvent les entités liées (lieu, formateurs, apprenants, entreprise, financeur) pour un contenu nominatif.
+- ⚠️ TVA 20% appliquée par défaut — si l'organisme est exonéré (art. 261-4-4°-a CGI), adapter `_prix_lignes` dans documents.py.
+- Testé : 8 PDF HTTP 200, mots-clés juridiques vérifiés par extraction, mise en page validée visuellement (analyse PDF).
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
