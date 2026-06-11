@@ -1146,7 +1146,15 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
         raise HTTPException(status_code=404, detail="Session introuvable")
     if doc_type not in DOC_BUILDERS:
         raise HTTPException(status_code=400, detail="Type de document invalide")
+    pdf = await _generer_pdf_session(session, doc_type)
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{doc_type}_{session.get("code_interne", session_id)}.pdf"'},
+    )
 
+
+async def _generer_pdf_session(session: dict, doc_type: str) -> bytes:
     ctx = {
         "session": session,
         "org": await get_organisme(),
@@ -1157,12 +1165,57 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
         "financeur": await db.financeurs.find_one({"id": session["financeur_id"]}, {"_id": 0}) if session.get("financeur_id") else None,
     }
     title, blocks = DOC_BUILDERS[doc_type](ctx)
-    pdf = build_pdf(title, blocks, ctx["org"])
-    return StreamingResponse(
-        io.BytesIO(pdf),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{doc_type}_{session.get("code_interne", session_id)}.pdf"'},
-    )
+    return build_pdf(title, blocks, ctx["org"])
+
+
+# Classement automatique des PDF générés dans les fiches des stagiaires
+DOC_TYPE_TO_CATEGORIE = {
+    "convention": "convention",
+    "contrat": "contrat",
+    "convocation": "convocation_certification",
+    "attestation": "attestation_assiduite",
+    "facture": "facture",
+    "emargement": "emargement",
+    "programme": "autre",
+    "evaluation": "autre",
+}
+
+
+@api.post("/documents/session/{session_id}/{doc_type}/classer")
+async def classer_document_session(session_id: str, doc_type: str, user: dict = Depends(get_current_user)):
+    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session introuvable")
+    if doc_type not in DOC_BUILDERS:
+        raise HTTPException(status_code=400, detail="Type de document invalide")
+    apprenant_ids = session.get("apprenants", [])
+    if not apprenant_ids:
+        raise HTTPException(status_code=400, detail="Aucun stagiaire inscrit à cette session")
+
+    pdf = await _generer_pdf_session(session, doc_type)
+    nom_fichier = f"{doc_type}_{session.get('code_interne', session_id)}.pdf"
+    path = f"{APP_PREFIX}/sessions/{session_id}/{doc_type}-{uuid.uuid4().hex}.pdf"
+    try:
+        result = await put_object(path, pdf, "application/pdf")
+    except Exception:
+        logger.exception("Échec de l'envoi vers le stockage d'objets")
+        raise HTTPException(status_code=502, detail="Stockage indisponible, réessayez dans un instant")
+
+    categorie = DOC_TYPE_TO_CATEGORIE[doc_type]
+    now_iso = now_utc().isoformat()
+    for aid in apprenant_ids:
+        await db.apprenant_documents.insert_one({
+            "id": new_id(),
+            "apprenant_id": aid,
+            "categorie": categorie,
+            "nom_fichier": nom_fichier,
+            "content_type": "application/pdf",
+            "taille": len(pdf),
+            "storage_path": result["path"],
+            "is_deleted": False,
+            "uploaded_at": now_iso,
+        })
+    return {"classes": len(apprenant_ids), "categorie": categorie, "nom_fichier": nom_fichier}
 
 
     return await get_organisme()

@@ -116,6 +116,12 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - **Fusion de doublons** : `POST /api/apprenants/fusionner {apprenant_ids}` — conserve la fiche la plus ancienne, hérite des champs manquants (email, tél, dossier_cpf, adresse, date naissance, entreprise), concatène les notes, réaffecte sessions + documents, supprime les doublons. Boutons "Fusionner" (ambre) sur chaque groupe de doublons dans Paramètres > Qualité des données.
 - Testé e2e : upload/download/delete réels via Object Storage (contenu vérifié), validation catégorie (400), fusion complète (dossier CPF hérité, 1 session + 1 doc réaffectés, doublon supprimé), UI fiche apprenant + upload via navigateur vérifiés. Données de test nettoyées.
 
+## Classement automatique des PDF dans les fiches (v1.9 — 11 juin 2026)
+- `POST /api/documents/session/{id}/{doc_type}/classer` : génère le PDF (factorisé dans `_generer_pdf_session`), l'envoie une fois vers l'Object Storage (`blade-academy-crm/sessions/{sid}/`), puis crée un enregistrement `apprenant_documents` pour CHAQUE stagiaire de la session (même storage_path partagé, soft delete indépendant). 400 si aucun stagiaire.
+- Mapping doc_type → catégorie fiche : convention→convention, contrat→contrat, convocation→convocation_certification, attestation→attestation_assiduite, facture→facture, emargement→emargement, programme/evaluation→autre (`DOC_TYPE_TO_CATEGORIE`).
+- UI : bouton "Classer dans les fiches" (cyan, icône FolderSimplePlus, data-testid `classer-{type}`) sous "Générer le PDF" sur chacune des 8 cartes de l'onglet Gestion de SessionDetail. Toast "classé dans N fiche(s)".
+- Testé : classement convention → visible sur la fiche du stagiaire (catégorie convention) → téléchargement HTTP 200, PDF valide. UI vérifiée par screenshot. Docs de test nettoyés.
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`

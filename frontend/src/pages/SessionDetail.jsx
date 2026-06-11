@@ -27,6 +27,7 @@ import {
   Certificate,
   ClipboardText,
   ShareNetwork,
+  FolderSimplePlus,
 } from "@phosphor-icons/react";
 import { statusBadgeClass } from "./Dashboard";
 
@@ -58,6 +59,19 @@ export default function SessionDetail() {
   const [session, setSession] = useState(null);
   const [refs, setRefs] = useState({ entreprises: [], formateurs: [], apprenants: [], lieux: [], financeurs: [] });
   const [loading, setLoading] = useState(true);
+  const [classing, setClassing] = useState(null);
+
+  const classerDocument = async (docType) => {
+    setClassing(docType);
+    try {
+      const { data } = await api.post(`/documents/session/${id}/${docType}/classer`);
+      toast.success(`Document classé dans ${data.classes} fiche(s) stagiaire(s)`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Classement impossible");
+    } finally {
+      setClassing(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -310,6 +324,14 @@ export default function SessionDetail() {
                 >
                   <FilePdf size={14} /> Générer le PDF
                 </a>
+                <button
+                  onClick={() => classerDocument(d.type)}
+                  disabled={classing === d.type}
+                  className="mt-1.5 inline-flex items-center justify-center gap-1.5 w-full h-8 rounded-md bg-brand-50 border border-brand-200 hover:bg-brand-100 text-xs font-medium text-brand-700 transition-colors disabled:opacity-50"
+                  data-testid={`classer-${d.type}`}
+                >
+                  <FolderSimplePlus size={14} /> {classing === d.type ? "Classement…" : "Classer dans les fiches"}
+                </button>
               </Card>
             ))}
           </div>
