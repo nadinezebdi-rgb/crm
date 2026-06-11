@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadSimple, MagnifyingGlass, Receipt } from "@phosphor-icons/react";
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import Pagination from "@/components/Pagination";
 
 const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
@@ -26,6 +27,8 @@ export default function Facturation() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -44,6 +47,7 @@ export default function Facturation() {
 
   useEffect(() => {
     let cancelled = false;
+    setPage(1);
     const t = setTimeout(() => { if (!cancelled) load(); }, 300);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,7 +167,7 @@ export default function Facturation() {
               ) : factures.length === 0 ? (
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">Aucune facture — importez votre export EDOF.</td></tr>
               ) : (
-                factures.map((f) => (
+                factures.slice((page - 1) * pageSize, page * pageSize).map((f) => (
                   <tr key={f.id} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors" data-testid={`facture-row-${f.numero_facture}`}>
                     <td className="px-4 py-2.5 font-medium text-slate-900 whitespace-nowrap">{f.numero_facture || "—"}</td>
                     <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">{f.numero_dossier || "—"}</td>
@@ -191,6 +195,9 @@ export default function Facturation() {
             </tbody>
           </table>
         </div>
+        {!loading && factures.length > 0 && (
+          <Pagination total={factures.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} testid="factures-pagination" />
+        )}
       </Card>
     </div>
   );

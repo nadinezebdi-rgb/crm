@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Plus, MagnifyingGlass, Trash, PencilSimple } from "@phosphor-icons/react";
+import Pagination from "@/components/Pagination";
 
 /**
  * Generic CRUD page used by Apprenants/Formateurs/etc.
@@ -28,6 +29,8 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blank);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = async () => {
     setLoading(true);
@@ -39,6 +42,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
 
   useEffect(() => {
     let cancelled = false;
+    setPage(1);
     const t = setTimeout(() => { if (!cancelled) load(); }, 300);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,7 +173,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
           <div className="p-10 text-center text-sm text-slate-500">Chargement…</div>
         ) : items.length === 0 ? (
           <div className="p-12 text-center text-sm text-slate-500">Aucun élément. Cliquez sur « Nouveau » pour commencer.</div>
-        ) : items.map((it) => (
+        ) : items.slice((page - 1) * pageSize, page * pageSize).map((it) => (
           <div key={it.id} className="grid items-center px-5 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors text-sm" style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr) 80px` }} data-testid={`${testid}-row-${it.id}`}>
             {columns.map((c) => (
               <div key={c.key} className="truncate pr-2 text-slate-700">
@@ -187,6 +191,9 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
             </div>
           </div>
         ))}
+        {!loading && items.length > 0 && (
+          <Pagination total={items.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} testid={`${testid}-pagination`} />
+        )}
       </Card>
     </div>
   );

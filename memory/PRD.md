@@ -97,6 +97,12 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - Frontend : page `/facturation` (Facturation.jsx) — 4 KPIs, graphique Recharts versé/mois, tableau (n° facture, dossier, stagiaire, montant, badge statut, dates, contrôle), recherche, bouton import direct. Entrée "Facturation CPF" dans la sidebar (groupe Pilotage). Champ "N° dossier CPF" ajouté au CRUD Apprenants.
 - Testé avec le vrai fichier : 237 importées / ré-import 237 maj 0 doublon / stats exactes / recherche OK / UI vérifiée par screenshot. Les 237 factures réelles sont en base de PREVIEW — l'utilisateur devra réimporter le fichier en production après redéploiement.
 
+## Pagination 20/50/100 (v1.6 — 11 juin 2026)
+- Composant réutilisable `Pagination.jsx` (sélecteur 20/50/100 par page, navigation précédent/suivant, compteur "X–Y sur N"). Pagination côté client.
+- Intégré dans `CrudPage.jsx` (toutes les pages Données : Apprenants, Formateurs, Entreprises, Financeurs, Lieux — reset page à la recherche) et `Facturation.jsx` (tableau des 237 factures).
+- data-testid : `{testid}-pagination(-size/-info/-prev/-next)`, `factures-pagination*`.
+- Testé : Facturation 1–20 sur 237 → 100/page → page 2 (101–200), Apprenants 1–5 sur 5. ⚠️ Leçon : ne pas lancer plusieurs search_replace en parallèle sur le MÊME fichier (conflit d'écriture constaté et corrigé).
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
