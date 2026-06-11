@@ -129,6 +129,28 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - Testé : avant purge CA 896 380 (6 900 démo + 889 480 CPF) → après purge CA 889 480, 0 démo, pas de réinsertion après restart, login admin intact. ⚠️ La base PREVIEW est maintenant purgée de la démo (vide hors factures CPF) — état attendu.
 - Action utilisateur en production : redéployer PUIS cliquer "Supprimer les données de démonstration".
 
+## Sessions mensuelles auto-générées depuis EDOF (v2.1 — 11 juin 2026)
+- Demande utilisateur : « il faut que tu analyses les exports et que tu essaies de faire des sessions par mois si possible ».
+- Backend : `EdofCommitPayload` reçoit un paramètre `groupement: Literal["mois","exact"] = "mois"`. Quand `mois` : les dossiers EDOF sont regroupés par (formation, YYYY-MM de la date début) → une session distincte est créée par mois avec nom auto « Formation — juillet 2025 ». Les bornes (date_debut/fin) du groupe = min des départs / max des fins. Ré-import idempotent (match par nom uniquement en mode mois). Quand `exact` : ancien comportement (clé = formation + date_debut + date_fin).
+- Frontend : `ImportEdofDialog.jsx` envoie le paramètre `groupement` et expose un toggle radio "Par mois (recommandé) / Par dates exactes" à l'étape 2 quand "créer les sessions" est coché. data-testid : `edof-groupement-mois`, `edof-groupement-exact`, `edof-groupement-block`.
+- Testé (curl + testing_agent) : 5 stagiaires sur 2 formations × 2 mois → 2 sessions distinctes nommées « ... — juillet 2025 » et « ... — août 2025 », statut auto (terminee/planifiee/brouillon). Mode exact crée 4 sessions distinctes (1 par triplet exact). Ré-import → sessions_maj sans doublon.
+
+## Refactoring modulaire du backend (v2.2 — 11 juin 2026)
+- `server.py` passé de **1480 lignes monolithique** à **70 lignes (entry point mince)**.
+- Nouvelle arborescence :
+  - `/app/backend/deps.py` (115 l.) — DB, JWT, helpers, get_current_user
+  - `/app/backend/models.py` (189 l.) — Pydantic payloads + constantes (MOIS_FR, DOC_TITLES, DOC_TYPE_TO_CATEGORIE, CATEGORIES_DOCUMENTS_APPRENANT, DEFAULT_ORGANISME)
+  - `/app/backend/seed.py` (162 l.) — migration rebrand + admin + démo
+  - `/app/backend/routes/auth.py` (118 l.)
+  - `/app/backend/routes/crud.py` (62 l.) — CRUD générique x5 entités
+  - `/app/backend/routes/sessions.py` (134 l.) — sessions + progression
+  - `/app/backend/routes/dashboard.py` (68 l.)
+  - `/app/backend/routes/parametres.py` (47 l.) — organisme + purge_demo
+  - `/app/backend/routes/imports.py` (267 l.) — EDOF Dossiers + Factures CPF
+  - `/app/backend/routes/documents.py` (249 l.) — PDF, classer, docs apprenants, fusion, qualité
+- ZERO changement de comportement métier. Tous les endpoints identiques. Testing_agent : 31/31 backend, 100% frontend, aucune régression.
+- Bénéfice : chaque module < 270 lignes, séparation domaine claire, hot-reload plus rapide, code prêt pour scaling.
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
