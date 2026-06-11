@@ -1,5 +1,4 @@
-import React from "react";
-import { useAuth } from "@/context/AuthContext";
+import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -17,6 +16,7 @@ import {
   WheelchairMotion,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import api, { formatApiError } from "@/lib/api";
 
 function Section({ icon: Icon, title, description, children, mocked }) {
   return (
@@ -42,9 +42,74 @@ function Section({ icon: Icon, title, description, children, mocked }) {
   );
 }
 
-export default function Parametres() {
-  const { user } = useAuth();
+const ORG_FIELDS = [
+  { key: "nom", label: "Nom de l'organisme", full: true },
+  { key: "forme_juridique", label: "Forme juridique" },
+  { key: "siret", label: "SIRET" },
+  { key: "rcs", label: "RCS" },
+  { key: "tva", label: "N° TVA intracommunautaire" },
+  { key: "code_ape", label: "Code APE" },
+  { key: "nda", label: "N° de déclaration d'activité (NDA)" },
+  { key: "nda_region", label: "Région d'enregistrement NDA" },
+  { key: "qualiopi_numero", label: "N° Qualiopi" },
+  { key: "qualiopi_certificateur", label: "Certificateur Qualiopi" },
+  { key: "adresse", label: "Adresse", full: true },
+  { key: "code_postal", label: "Code postal" },
+  { key: "ville", label: "Ville" },
+  { key: "email", label: "Email" },
+  { key: "telephone", label: "Téléphone" },
+  { key: "site_web", label: "Site web", full: true },
+];
 
+function OrganismeIdentite() {
+  const [org, setOrg] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get("/parametres/organisme").then(({ data }) => setOrg(data)).catch(() => toast.error("Impossible de charger les infos de l'organisme"));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put("/parametres/organisme", org);
+      setOrg(data);
+      toast.success("Informations de l'organisme enregistrées");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Enregistrement impossible");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!org) return <div className="text-xs text-slate-400">Chargement…</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {ORG_FIELDS.map((f) => (
+          <div key={f.key} className={f.full ? "col-span-2" : ""}>
+            <Label className="text-xs font-medium text-slate-700">{f.label}</Label>
+            <Input
+              className="mt-1"
+              data-testid={`org-${f.key}`}
+              value={org[f.key] || ""}
+              onChange={(e) => setOrg({ ...org, [f.key]: e.target.value })}
+            />
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-500">
+        Ces informations figurent automatiquement sur tous les documents PDF générés (conventions, attestations, factures…).
+      </p>
+      <Button onClick={save} disabled={saving} data-testid="org-save-btn" className="bg-brand-600 hover:bg-brand-700">
+        {saving ? "Enregistrement…" : "Enregistrer"}
+      </Button>
+    </div>
+  );
+}
+
+export default function Parametres() {
   return (
     <div className="p-6 lg:p-8" data-testid="parametres-page">
       <header className="mb-6">
@@ -54,24 +119,8 @@ export default function Parametres() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Section icon={Buildings} title="Identité de l'organisme" description="Vos coordonnées et informations légales.">
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs font-medium text-slate-700">Nom de l&apos;organisme</Label>
-              <Input className="mt-1" defaultValue={user?.organisme} data-testid="org-name" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-medium text-slate-700">SIRET</Label>
-                <Input className="mt-1" placeholder="12345678900012" />
-              </div>
-              <div>
-                <Label className="text-xs font-medium text-slate-700">Numéro de déclaration</Label>
-                <Input className="mt-1" placeholder="11 75 12345 75" />
-              </div>
-            </div>
-            <Button onClick={() => toast.success("Paramètres enregistrés (mock MVP)")} className="bg-brand-600 hover:bg-brand-700">Enregistrer</Button>
-          </div>
+        <Section icon={Buildings} title="Identité de l'organisme" description="Vos coordonnées et informations légales — reprises sur tous les documents PDF.">
+          <OrganismeIdentite />
         </Section>
 
         <Section icon={Palette} title="Marque & catalogue en ligne" description="Logo, slogan, charte couleur, mentions légales." mocked>

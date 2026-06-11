@@ -612,21 +612,100 @@ async def calendar(user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Paramètres organisme (infos légales — utilisées sur les documents PDF)
+# ---------------------------------------------------------------------------
+DEFAULT_ORGANISME = {
+    "nom": "Blade Academy",
+    "forme_juridique": "SAS",
+    "adresse": "26 Rue Jules Lefebvre",
+    "code_postal": "02130",
+    "ville": "Fère-en-Tardenois",
+    "pays": "France",
+    "siret": "984 617 654 00012",
+    "rcs": "Soissons 984 617 654",
+    "code_ape": "85.59A",
+    "tva": "FR50984617654",
+    "nda": "32020170602",
+    "nda_region": "Hauts-de-France",
+    "qualiopi_numero": "338511-1",
+    "qualiopi_certificateur": "CERTIF OPAC",
+    "email": "blade.academy@hotmail.com",
+    "telephone": "+33 (0)6 51 21 84 87",
+    "site_web": "https://blade-academy.fr",
+}
+
+
+class OrganismeSettings(BaseModel):
+    nom: str = ""
+    forme_juridique: str = ""
+    adresse: str = ""
+    code_postal: str = ""
+    ville: str = ""
+    pays: str = ""
+    siret: str = ""
+    rcs: str = ""
+    code_ape: str = ""
+    tva: str = ""
+    nda: str = ""
+    nda_region: str = ""
+    qualiopi_numero: str = ""
+    qualiopi_certificateur: str = ""
+    email: str = ""
+    telephone: str = ""
+    site_web: str = ""
+
+
+async def get_organisme() -> dict:
+    doc = await db.organisme_settings.find_one({"key": "organisme"}, {"_id": 0, "key": 0})
+    return doc or dict(DEFAULT_ORGANISME)
+
+
+@api.get("/parametres/organisme")
+async def read_organisme(user: dict = Depends(get_current_user)):
+    return await get_organisme()
+
+
+@api.put("/parametres/organisme")
+async def update_organisme(payload: OrganismeSettings, user: dict = Depends(get_current_user)):
+    await db.organisme_settings.update_one(
+        {"key": "organisme"}, {"$set": payload.model_dump()}, upsert=True
+    )
+    return await get_organisme()
+
+
+# ---------------------------------------------------------------------------
 # Document generation (PDF) — basic ReportLab
 # ---------------------------------------------------------------------------
-def build_pdf(title: str, lines: List[str]) -> bytes:
+def build_pdf(title: str, lines: List[str], org: dict) -> bytes:
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
 
-    # Header band
-    c.setFillColor(colors.HexColor("#2563EB"))
+    # Header band — Blade navy + cyan accent
+    c.setFillColor(colors.HexColor("#0B1726"))
     c.rect(0, height - 3 * cm, width, 3 * cm, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor("#4FC0EE"))
+    c.rect(0, height - 3.12 * cm, width, 0.12 * cm, fill=1, stroke=0)
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 20)
-    c.drawString(2 * cm, height - 2 * cm, os.environ.get("ORG_NAME", "Blade Academy"))
-    c.setFont("Helvetica", 10)
-    c.drawString(2 * cm, height - 2.6 * cm, "Organisme de formation certifié Qualiopi")
+    c.drawString(2 * cm, height - 1.7 * cm, (org.get("nom") or "Blade Academy").upper())
+    c.setFillColor(colors.HexColor("#4FC0EE"))
+    c.setFont("Helvetica", 9)
+    qualiopi = f"Organisme de formation certifié Qualiopi N° {org['qualiopi_numero']}" if org.get("qualiopi_numero") else "Organisme de formation certifié Qualiopi"
+    c.drawString(2 * cm, height - 2.3 * cm, qualiopi)
+    # Coordonnées à droite
+    c.setFillColor(colors.HexColor("#CBD5E1"))
+    c.setFont("Helvetica", 8)
+    right_lines = [
+        f"{org.get('adresse', '')}, {org.get('code_postal', '')} {org.get('ville', '')}".strip(", "),
+        f"{org.get('telephone', '')} — {org.get('email', '')}".strip(" —"),
+        org.get("site_web", ""),
+    ]
+    ry = height - 1.4 * cm
+    for rl in right_lines:
+        if rl:
+            c.drawRightString(width - 2 * cm, ry, rl)
+            ry -= 0.45 * cm
 
     # Title
     c.setFillColor(colors.HexColor("#0F172A"))
@@ -637,18 +716,35 @@ def build_pdf(title: str, lines: List[str]) -> bytes:
     c.setFont("Helvetica", 11)
     y = height - 5.8 * cm
     for line in lines:
-        if y < 3 * cm:
+        if y < 3.4 * cm:
             c.showPage()
             y = height - 2 * cm
         c.setFillColor(colors.HexColor("#0F172A"))
         c.drawString(2 * cm, y, line[:110])
         y -= 0.7 * cm
 
-    # Footer
+    # Footer — mentions légales
     c.setFillColor(colors.HexColor("#64748B"))
+    c.setFont("Helvetica", 7)
+    legal_parts = []
+    if org.get("nom"):
+        forme = f" ({org['forme_juridique']})" if org.get("forme_juridique") else ""
+        legal_parts.append(f"{org['nom']}{forme}")
+    if org.get("siret"):
+        legal_parts.append(f"SIRET {org['siret']}")
+    if org.get("rcs"):
+        legal_parts.append(f"RCS {org['rcs']}")
+    if org.get("tva"):
+        legal_parts.append(f"TVA {org['tva']}")
+    c.drawString(2 * cm, 2.1 * cm, " · ".join(legal_parts))
+    if org.get("nda"):
+        region = f" auprès du préfet de région {org['nda_region']}" if org.get("nda_region") else ""
+        c.drawString(2 * cm, 1.7 * cm, f"Déclaration d'activité enregistrée sous le numéro {org['nda']}{region}. Cet enregistrement ne vaut pas agrément de l'État.")
     c.setFont("Helvetica", 8)
-    c.drawString(2 * cm, 1.5 * cm, f"Document généré le {now_utc().strftime('%d/%m/%Y à %H:%M UTC')}")
-    c.drawRightString(width - 2 * cm, 1.5 * cm, "Conforme Qualiopi - Blade Academy")
+    c.drawString(2 * cm, 1.2 * cm, f"Document généré le {now_utc().strftime('%d/%m/%Y à %H:%M UTC')}")
+    qualiopi_footer = f"Qualiopi N° {org['qualiopi_numero']}" if org.get("qualiopi_numero") else "Conforme Qualiopi"
+    certif = f" — {org['qualiopi_certificateur']}" if org.get("qualiopi_certificateur") else ""
+    c.drawRightString(width - 2 * cm, 1.2 * cm, f"{qualiopi_footer}{certif}")
 
     c.save()
     buf.seek(0)
@@ -691,7 +787,8 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
         "Article 2 - Modalités",
         "Le présent document est généré automatiquement par la plateforme Blade Academy.",
     ]
-    pdf = build_pdf(valid[doc_type], lines)
+    org = await get_organisme()
+    pdf = build_pdf(valid[doc_type], lines, org)
     return StreamingResponse(
         io.BytesIO(pdf),
         media_type="application/pdf",
@@ -721,6 +818,10 @@ async def seed():
             {"id": f["id"]},
             {"$set": {"email": f["email"].replace("@formapro.fr", "@blade-academy.fr")}},
         )
+
+    # Infos légales de l'organisme (pré-remplies Blade Academy si absentes)
+    if not await db.organisme_settings.find_one({"key": "organisme"}):
+        await db.organisme_settings.insert_one({"key": "organisme", **DEFAULT_ORGANISME})
 
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@blade-academy.fr")

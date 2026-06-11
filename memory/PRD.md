@@ -36,6 +36,13 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - DB : `users.organisme` → "Blade Academy", admin renommé "Admin Blade Academy". **Credentials migrés (11 juin) : admin@blade-academy.fr / admin123** (migration idempotente au démarrage dans `seed()` — fonctionne aussi en production au prochain redéploiement ; l'ancien admin@formapro.fr n'existe plus). Données démo nettoyées (emails formateurs, lieu "Centre Blade Academy Paris"). `.env` backend : ADMIN_EMAIL/ADMIN_NAME/ORG_NAME mis à jour (DB_NAME inchangé).
 - Sous-domaine : l'utilisateur veut crm.blade-academy.fr (DNS CNAME vers déploiement Emergent, site principal reste sur Webflow) — instructions données, action côté utilisateur.
 
+## Infos légales organisme + PDF (v1.2 — 11 juin 2026)
+- Collection `organisme_settings` (doc singleton, clé "organisme"), pré-remplie au seed avec les vraies infos légales de Blade Academy (source : blade-academy.fr/mentions-legales) : SAS, SIRET 984 617 654 00012, RCS Soissons, APE 85.59A, TVA FR50984617654, NDA 32020170602 (Hauts-de-France), Qualiopi N° 338511-1 (CERTIF OPAC), 26 Rue Jules Lefebvre 02130 Fère-en-Tardenois, blade.academy@hotmail.com, +33 (0)6 51 21 84 87.
+- Endpoints : `GET/PUT /api/parametres/organisme` (auth requis).
+- PDF rebrandés : bandeau navy #0B1726 + liseré cyan, coordonnées en en-tête, pied de page légal complet (SIRET/RCS/TVA, mention NDA réglementaire, N° Qualiopi + certificateur). `build_pdf(title, lines, org)`.
+- Paramètres > "Identité de l'organisme" : section fonctionnelle (16 champs, GET au chargement, PUT à l'enregistrement, data-testid `org-{champ}` + `org-save-btn`).
+- Testé : login, GET/PUT, 4 types de PDF générés (HTTP 200), extraction texte PDF vérifiée (8 mentions légales présentes), UI vérifiée par screenshot.
+
 ## Backlog (Next Priorities)
 ### P0 (Next iteration)
 - Module **Gestion commerciale** : pipeline d'opportunités (CRM), enrôlements, archivage opportunités.
