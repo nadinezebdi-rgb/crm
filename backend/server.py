@@ -29,7 +29,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from documents import build_pdf, DOC_BUILDERS
-from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount
+from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns
 
 # ---------------------------------------------------------------------------
 # Config
@@ -213,6 +213,7 @@ class ApprenantPayload(BaseModel):
     entreprise_id: Optional[str] = None
     date_naissance: Optional[str] = None
     adresse: Optional[str] = None
+    dossier_cpf: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -778,6 +779,7 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
                 "entreprise_id": None,
                 "date_naissance": None,
                 "adresse": None,
+                "dossier_cpf": dossier or None,
                 "notes": notes,
                 "created_at": now_utc().isoformat(),
                 "updated_at": now_utc().isoformat(),
@@ -841,6 +843,102 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
             stats["sessions_creees"] += 1
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Facturation CPF (import de l'export "Factures" EDOF + suivi des encaissements)
+# ---------------------------------------------------------------------------
+@api.post("/factures-cpf/import")
+async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10 Mo)")
+    try:
+        columns, rows = parse_import_file(file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    mapping = map_facture_columns(columns)
+    if not mapping.get("numero_dossier") or not mapping.get("montant"):
+        raise HTTPException(
+            status_code=400,
+            detail="Ce fichier ne ressemble pas à un export Factures EDOF (colonnes n° de dossier / montant introuvables)",
+        )
+
+    def val(row, field):
+        col = mapping.get(field)
+        return str(row.get(col) or "").strip() if col else ""
+
+    stats = {"importees": 0, "mises_a_jour": 0, "ignorees": 0}
+    for row in rows:
+        numero_dossier = val(row, "numero_dossier")
+        numero_facture = val(row, "numero_facture")
+        if not numero_dossier and not numero_facture:
+            stats["ignorees"] += 1
+            continue
+        doc = {
+            "numero_dossier": numero_dossier or None,
+            "numero_facture": numero_facture or None,
+            "type_facture": val(row, "type_facture") or "FACTURE",
+            "date_emission": parse_date_fr(val(row, "date_emission")),
+            "montant": parse_amount(val(row, "montant")),
+            "statut_reglement": val(row, "statut_reglement") or "Inconnu",
+            "date_reglement": parse_date_fr(val(row, "date_reglement")),
+            "en_controle": val(row, "en_controle").upper().startswith("O"),
+            "updated_at": now_utc().isoformat(),
+        }
+        key = {"numero_facture": numero_facture} if numero_facture else {
+            "numero_dossier": numero_dossier, "montant": doc["montant"], "date_emission": doc["date_emission"],
+        }
+        existing = await db.factures_cpf.find_one(key, {"_id": 1})
+        if existing:
+            await db.factures_cpf.update_one({"_id": existing["_id"]}, {"$set": doc})
+            stats["mises_a_jour"] += 1
+        else:
+            await db.factures_cpf.insert_one({"id": new_id(), "created_at": now_utc().isoformat(), **doc})
+            stats["importees"] += 1
+    return stats
+
+
+@api.get("/factures-cpf")
+async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
+    query = {}
+    if q:
+        query = {"$or": [
+            {"numero_dossier": {"$regex": re.escape(q), "$options": "i"}},
+            {"numero_facture": {"$regex": re.escape(q), "$options": "i"}},
+        ]}
+    factures = await db.factures_cpf.find(query, {"_id": 0}).sort("date_emission", -1).to_list(2000)
+    # Lien factures ↔ stagiaires via le n° de dossier CPF
+    apprenants_map = {}
+    async for a in db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}):
+        apprenants_map[a["dossier_cpf"]] = a
+    for f in factures:
+        linked = apprenants_map.get(f.get("numero_dossier"))
+        f["apprenant"] = {"id": linked["id"], "nom": linked["nom"], "prenom": linked["prenom"]} if linked else None
+    return factures
+
+
+@api.get("/factures-cpf/stats")
+async def factures_cpf_stats(user: dict = Depends(get_current_user)):
+    factures = await db.factures_cpf.find({}, {"_id": 0, "montant": 1, "statut_reglement": 1, "date_emission": 1}).to_list(10000)
+    total = sum(f.get("montant", 0) for f in factures)
+    verse = sum(f.get("montant", 0) for f in factures if str(f.get("statut_reglement", "")).lower().startswith("vers"))
+    par_mois: Dict[str, Dict[str, float]] = {}
+    for f in factures:
+        mois = (f.get("date_emission") or "")[:7]
+        if not mois:
+            continue
+        entry = par_mois.setdefault(mois, {"total": 0.0, "verse": 0.0})
+        entry["total"] += f.get("montant", 0)
+        if str(f.get("statut_reglement", "")).lower().startswith("vers"):
+            entry["verse"] += f.get("montant", 0)
+    return {
+        "nb_factures": len(factures),
+        "total": round(total, 2),
+        "total_verse": round(verse, 2),
+        "total_attente": round(total - verse, 2),
+        "par_mois": [{"mois": m, **{k: round(v, 2) for k, v in d.items()}} for m, d in sorted(par_mois.items())],
+    }
 
 
 # ---------------------------------------------------------------------------

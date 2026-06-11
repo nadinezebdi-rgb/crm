@@ -12,6 +12,7 @@ import Dashboard from "@/pages/Dashboard";
 import Sessions from "@/pages/Sessions";
 import SessionDetail from "@/pages/SessionDetail";
 import SessionCreate from "@/pages/SessionCreate";
+import Facturation from "@/pages/Facturation";
 import Apprenants from "@/pages/Apprenants";
 import Formateurs from "@/pages/Formateurs";
 import Entreprises from "@/pages/Entreprises";
@@ -90,6 +91,7 @@ function AppRouter() {
         <Route path="sessions" element={<Sessions />} />
         <Route path="sessions/new" element={<SessionCreate />} />
         <Route path="sessions/:id" element={<SessionDetail />} />
+        <Route path="facturation" element={<Facturation />} />
         <Route path="apprenants" element={<Apprenants />} />
         <Route path="formateurs" element={<Formateurs />} />
         <Route path="entreprises" element={<Entreprises />} />

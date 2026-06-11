@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
   House,
   Kanban,
+  Receipt,
   Users,
   ChalkboardTeacher,
   Buildings,
@@ -27,6 +28,7 @@ import {
 const NAV = [
   { to: "/dashboard", label: "Accueil", icon: House, testid: "nav-dashboard" },
   { to: "/sessions", label: "Sessions", icon: Kanban, testid: "nav-sessions" },
+  { to: "/facturation", label: "Facturation CPF", icon: Receipt, testid: "nav-facturation" },
   { to: "/apprenants", label: "Apprenants", icon: Users, testid: "nav-apprenants" },
   { to: "/formateurs", label: "Formateurs", icon: ChalkboardTeacher, testid: "nav-formateurs" },
   { to: "/entreprises", label: "Entreprises", icon: Buildings, testid: "nav-entreprises" },
@@ -58,15 +60,15 @@ export default function Layout() {
 
         <nav className="flex-1 px-3 py-5 space-y-0.5">
           <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Pilotage</div>
-          {NAV.slice(0, 2).map((item) => (
+          {NAV.slice(0, 3).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Données</div>
-          {NAV.slice(2, 7).map((item) => (
+          {NAV.slice(3, 8).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Config</div>
-          {NAV.slice(7).map((item) => (
+          {NAV.slice(8).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
         </nav>

@@ -90,6 +90,13 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - data-testid : edof-import-btn, edof-file-input, edof-mapping-{champ}, edof-create-sessions, edof-commit-btn, edof-result, edof-close-btn.
 - Testé e2e : CSV cp1252 + XLSX, mapping auto 10/10, commit (4 apprenants, 3 sessions, 1 annulé ignoré, doublon email fusionné), ré-import idempotent, UI vérifiée par screenshots (fix overflow modal min-w-0). Données de test nettoyées.
 
+## Module Facturation CPF (v1.5 — 11 juin 2026)
+- Contexte : l'utilisateur a fourni son export EDOF **Factures** réel (237 factures 2025, toutes "Versé", 889 480 €) — fichier sans données nominatives (pas de nom/email/formation), donc inutilisable pour créer des stagiaires (l'export **Dossiers** EDOF reste nécessaire pour ça).
+- Backend : `map_facture_columns()` dans import_edof.py (détection NUMERO_DOSSIER, NUMERO_FACTURE, TYPE, DATE_EMISSION, MONTANT_REGLEMENT, STATUT_REGLEMENT, DATE_REGLEMENT, EN CONTROLE O/N). Endpoints : `POST /api/factures-cpf/import` (upload direct, dédoublonnage par n° facture, ré-import = mise à jour), `GET /api/factures-cpf?q=` (recherche n° dossier/facture, lien stagiaire via `apprenants.dossier_cpf`), `GET /api/factures-cpf/stats` (nb, total, versé, attente, par_mois).
+- Champ `dossier_cpf` ajouté à ApprenantPayload + renseigné par l'import EDOF Dossiers → les factures se relient automatiquement aux stagiaires une fois l'export Dossiers importé.
+- Frontend : page `/facturation` (Facturation.jsx) — 4 KPIs, graphique Recharts versé/mois, tableau (n° facture, dossier, stagiaire, montant, badge statut, dates, contrôle), recherche, bouton import direct. Entrée "Facturation CPF" dans la sidebar (groupe Pilotage). Champ "N° dossier CPF" ajouté au CRUD Apprenants.
+- Testé avec le vrai fichier : 237 importées / ré-import 237 maj 0 doublon / stats exactes / recherche OK / UI vérifiée par screenshot. Les 237 factures réelles sont en base de PREVIEW — l'utilisateur devra réimporter le fichier en production après redéploiement.
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`

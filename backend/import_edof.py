@@ -169,3 +169,39 @@ def parse_amount(value):
         return float(v)
     except ValueError:
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Export EDOF "Factures" (encaissements CPF)
+# ---------------------------------------------------------------------------
+_FACTURE_KEYWORDS = {
+    "numero_facture": (["numero_facture", "numero facture", "n° facture"], ["type", "date", "emission"]),
+    "numero_dossier": (["numero_dossier", "numero dossier", "dossier"], ["controle"]),
+    "type_facture": (["type"], []),
+    "date_emission": (["emission"], []),
+    "montant": (["montant", "prix"], []),
+    "statut_reglement": (["statut"], []),
+    "date_reglement": (["date_reglement", "date reglement", "reglement"], ["statut", "montant"]),
+    "en_controle": (["controle"], []),
+}
+
+
+def map_facture_columns(columns):
+    used = set()
+    mapping = {}
+    for field, (keywords, excludes) in _FACTURE_KEYWORDS.items():
+        mapping[field] = None
+        for kw in keywords:
+            found = None
+            for col in columns:
+                if col in used:
+                    continue
+                cn = _norm(col)
+                if kw in cn and not any(x in cn for x in excludes):
+                    found = col
+                    break
+            if found:
+                mapping[field] = found
+                used.add(found)
+                break
+    return mapping
