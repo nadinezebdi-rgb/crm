@@ -103,6 +103,12 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - data-testid : `{testid}-pagination(-size/-info/-prev/-next)`, `factures-pagination*`.
 - Testé : Facturation 1–20 sur 237 → 100/page → page 2 (101–200), Apprenants 1–5 sur 5. ⚠️ Leçon : ne pas lancer plusieurs search_replace en parallèle sur le MÊME fichier (conflit d'écriture constaté et corrigé).
 
+## Qualité des données — doublons (v1.7 — 11 juin 2026)
+- Endpoint `GET /api/qualite/doublons` : apprenants groupés par email identique et par nom+prénom identique (dédupliqué si même email déjà signalé), factures CPF groupées par n° de facture identique, + info dossiers CPF multi-factures (souvent normal).
+- UI : section "Qualité des données" dans Paramètres (bouton "Analyser les doublons", résultat vert si propre / blocs ambre détaillés sinon). data-testid : doublons-analyse-btn, doublons-result, doublons-aucun.
+- Vérifié en préversion : 0 doublon (5 apprenants seed, 237 factures réelles). Détection testée par insertion/suppression de doublons artificiels (email + n° facture détectés).
+- Rappel donné à l'utilisateur : recherche déjà présente partout (barre globale topbar → sessions, champ recherche sur chaque page de liste, recherche factures par n° dossier/facture).
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`

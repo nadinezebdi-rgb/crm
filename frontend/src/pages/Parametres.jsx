@@ -14,6 +14,9 @@ import {
   ShieldCheck,
   Bell,
   WheelchairMotion,
+  Detective,
+  CheckCircle,
+  Warning,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
@@ -109,6 +112,91 @@ function OrganismeIdentite() {
   );
 }
 
+function QualiteDonnees() {
+  const [res, setRes] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const analyser = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/qualite/doublons");
+      setRes(data);
+    } catch {
+      toast.error("Analyse impossible");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const nbProblemes = res
+    ? res.apprenants_par_email.length + res.apprenants_par_nom.length + res.factures_par_numero.length
+    : 0;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Recherche les apprenants en double (même email ou même nom + prénom) et les factures CPF en double (même n° de facture).
+      </p>
+      <Button onClick={analyser} disabled={loading} data-testid="doublons-analyse-btn" className="bg-brand-600 hover:bg-brand-700">
+        <Detective size={16} className="mr-1.5" /> {loading ? "Analyse…" : "Analyser les doublons"}
+      </Button>
+
+      {res && (
+        <div className="space-y-3" data-testid="doublons-result">
+          <div className="text-xs text-slate-600">
+            {res.total_apprenants} apprenant(s) et {res.total_factures} facture(s) analysés.
+          </div>
+          {nbProblemes === 0 ? (
+            <div className="flex items-center gap-1.5 text-sm text-emerald-700 font-medium" data-testid="doublons-aucun">
+              <CheckCircle size={16} weight="fill" /> Aucun doublon détecté — vos données sont propres !
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {res.apprenants_par_email.length > 0 && (
+                <DoublonBloc titre={`Apprenants avec le même email (${res.apprenants_par_email.length})`}>
+                  {res.apprenants_par_email.map((g) => (
+                    <li key={g.cle}><span className="font-medium">{g.cle}</span> — {g.apprenants.map((a) => `${a.prenom} ${a.nom}`).join(", ")} ({g.apprenants.length} fiches)</li>
+                  ))}
+                </DoublonBloc>
+              )}
+              {res.apprenants_par_nom.length > 0 && (
+                <DoublonBloc titre={`Apprenants avec le même nom + prénom (${res.apprenants_par_nom.length})`}>
+                  {res.apprenants_par_nom.map((g) => (
+                    <li key={g.cle}><span className="font-medium">{g.cle}</span> — {g.apprenants.length} fiches (emails : {g.apprenants.map((a) => a.email || "aucun").join(" / ")})</li>
+                  ))}
+                </DoublonBloc>
+              )}
+              {res.factures_par_numero.length > 0 && (
+                <DoublonBloc titre={`Factures avec le même numéro (${res.factures_par_numero.length})`}>
+                  {res.factures_par_numero.map((g) => (
+                    <li key={g.cle}><span className="font-medium">{g.cle}</span> — {g.factures.length} factures ({g.factures.map((f) => `${f.montant} €`).join(" / ")})</li>
+                  ))}
+                </DoublonBloc>
+              )}
+            </div>
+          )}
+          {res.dossiers_multi_factures.length > 0 && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+              ℹ️ {res.dossiers_multi_factures.length} dossier(s) CPF avec plusieurs factures — c'est souvent normal (facturation en plusieurs fois), à vérifier seulement en cas de doute.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoublonBloc({ titre, children }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 mb-1.5">
+        <Warning size={14} /> {titre}
+      </div>
+      <ul className="list-disc pl-4 space-y-1 text-xs text-amber-900 max-h-48 overflow-y-auto">{children}</ul>
+    </div>
+  );
+}
+
 export default function Parametres() {
   return (
     <div className="p-6 lg:p-8" data-testid="parametres-page">
@@ -121,6 +209,10 @@ export default function Parametres() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Section icon={Buildings} title="Identité de l'organisme" description="Vos coordonnées et informations légales — reprises sur tous les documents PDF.">
           <OrganismeIdentite />
+        </Section>
+
+        <Section icon={Detective} title="Qualité des données" description="Détection des doublons (apprenants et factures CPF).">
+          <QualiteDonnees />
         </Section>
 
         <Section icon={Palette} title="Marque & catalogue en ligne" description="Logo, slogan, charte couleur, mentions légales." mocked>

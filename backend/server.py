@@ -942,6 +942,53 @@ async def factures_cpf_stats(user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Qualité des données — détection de doublons
+# ---------------------------------------------------------------------------
+@api.get("/qualite/doublons")
+async def detect_doublons(user: dict = Depends(get_current_user)):
+    apprenants = await db.apprenants.find(
+        {}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "email": 1, "dossier_cpf": 1}
+    ).to_list(20000)
+
+    by_email: Dict[str, list] = {}
+    by_name: Dict[tuple, list] = {}
+    for a in apprenants:
+        if a.get("email"):
+            by_email.setdefault(a["email"].lower().strip(), []).append(a)
+        key = ((a.get("nom") or "").lower().strip(), (a.get("prenom") or "").lower().strip())
+        by_name.setdefault(key, []).append(a)
+
+    doublons_email = [{"cle": k, "apprenants": v} for k, v in by_email.items() if len(v) > 1]
+    doublons_nom = []
+    for (n, p), v in by_name.items():
+        if len(v) > 1:
+            emails = {(x.get("email") or "").lower().strip() for x in v}
+            # Déjà signalé par email identique → on ne le répète que si les emails diffèrent ou manquent
+            if len(emails) > 1 or "" in emails:
+                doublons_nom.append({"cle": f"{p.title()} {n.upper()}".strip(), "apprenants": v})
+
+    factures = await db.factures_cpf.find(
+        {}, {"_id": 0, "id": 1, "numero_facture": 1, "numero_dossier": 1, "montant": 1, "date_emission": 1}
+    ).to_list(20000)
+    by_facture: Dict[str, list] = {}
+    by_dossier: Dict[str, list] = {}
+    for f in factures:
+        if f.get("numero_facture"):
+            by_facture.setdefault(f["numero_facture"], []).append(f)
+        if f.get("numero_dossier"):
+            by_dossier.setdefault(f["numero_dossier"], []).append(f)
+
+    return {
+        "total_apprenants": len(apprenants),
+        "total_factures": len(factures),
+        "apprenants_par_email": doublons_email,
+        "apprenants_par_nom": doublons_nom,
+        "factures_par_numero": [{"cle": k, "factures": v} for k, v in by_facture.items() if len(v) > 1],
+        "dossiers_multi_factures": [{"cle": k, "factures": v} for k, v in by_dossier.items() if len(v) > 1],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Documents PDF réglementaires (voir documents.py)
 # ---------------------------------------------------------------------------
 DOC_TITLES = {
