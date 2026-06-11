@@ -22,7 +22,7 @@ function Section({ icon: Icon, title, description, children, mocked }) {
   return (
     <Card className="p-6 border-slate-200 shadow-none">
       <div className="flex items-start gap-4">
-        <div className="h-10 w-10 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center">
+        <div className="h-10 w-10 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center">
           <Icon size={20} weight="duotone" />
         </div>
         <div className="flex-1">
@@ -48,7 +48,7 @@ export default function Parametres() {
   return (
     <div className="p-6 lg:p-8" data-testid="parametres-page">
       <header className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Configuration</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Configuration</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900 mt-1">Paramètres</h1>
         <p className="text-sm text-slate-500 mt-1">Configurez votre organisme, votre marque et vos intégrations.</p>
       </header>
@@ -70,7 +70,7 @@ export default function Parametres() {
                 <Input className="mt-1" placeholder="11 75 12345 75" />
               </div>
             </div>
-            <Button onClick={() => toast.success("Paramètres enregistrés (mock MVP)")} className="bg-blue-600 hover:bg-blue-700">Enregistrer</Button>
+            <Button onClick={() => toast.success("Paramètres enregistrés (mock MVP)")} className="bg-brand-600 hover:bg-brand-700">Enregistrer</Button>
           </div>
         </Section>
 
@@ -113,8 +113,8 @@ export default function Parametres() {
               <div className="font-display text-xl text-slate-900 mt-1">Certifié</div>
               <div className="text-[11px] text-slate-500 mt-1">Audit prévu 03/2027</div>
             </div>
-            <div className="border border-blue-200 bg-blue-50/50 rounded-md p-3">
-              <div className="text-xs text-blue-700 font-semibold">BPF</div>
+            <div className="border border-brand-200 bg-brand-50/50 rounded-md p-3">
+              <div className="text-xs text-brand-700 font-semibold">BPF</div>
               <div className="font-display text-xl text-slate-900 mt-1">À soumettre</div>
               <div className="text-[11px] text-slate-500 mt-1">Échéance 30/04</div>
             </div>

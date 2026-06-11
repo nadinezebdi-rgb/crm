@@ -78,7 +78,7 @@ export default function Sessions() {
     <div className="p-6 lg:p-8" data-testid="sessions-page">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Sessions de formation</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Sessions de formation</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900 mt-1">Pilotage des sessions</h1>
           <p className="text-sm text-slate-500 mt-1">{sessions.length} sessions • Glissez vos sessions entre les colonnes pour mettre à jour leur statut.</p>
         </div>
@@ -99,7 +99,7 @@ export default function Sessions() {
               <ListBullets size={14} /> Liste
             </button>
           </div>
-          <Button onClick={() => navigate("/sessions/new")} data-testid="new-session-btn" className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => navigate("/sessions/new")} data-testid="new-session-btn" className="bg-brand-600 hover:bg-brand-700">
             <Plus size={16} className="mr-1.5" /> Nouvelle session
           </Button>
         </div>
@@ -209,7 +209,7 @@ function SessionCard({ session, onMove }) {
             <div className="text-sm font-medium text-slate-900 mt-1 line-clamp-2">{session.nom}</div>
           </div>
           {session.distanciel && (
-            <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50 text-[10px] h-5 px-1.5">
+            <Badge variant="outline" className="border-brand-200 text-brand-700 bg-brand-50 text-[10px] h-5 px-1.5">
               Distanciel
             </Badge>
           )}

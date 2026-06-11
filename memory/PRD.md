@@ -1,4 +1,5 @@
-# FormaPro — Product Requirements Document
+# Blade Academy CRM — Product Requirements Document
+(ex-FormaPro — rebrandé Blade Academy le 11 juin 2026)
 
 ## Original Problem Statement
 Plateforme web complète de gestion d'organisme de formation (français) couvrant le cycle de vie d'une formation : prospection commerciale → planification → conformité Qualiopi & BPF → gestion apprenants/formateurs → délivrance des attestations. Trois profils : admins/gestionnaires, formateurs (internes/externes), apprenants & entreprises clientes.
@@ -18,7 +19,7 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 ## Tech Choices
 - Auth: JWT (HS256, 8h access + 7d refresh, httpOnly cookies) + Emergent OAuth (`auth.emergentagent.com` → `/api/auth/emergent/session`).
 - DB: MongoDB, custom string IDs (`user_id`, `id`), all ISO datetime strings.
-- Design: Light Swiss-style B2B SaaS, blue accent #2563EB, no gradients/purple.
+- Design: **Rebrand Blade Academy (11 juin 2026)** — thème clair, sidebar navy #0B1726, accent cyan Blade (#4FC0EE→#0E7FB6, palette tailwind `brand`), logo rond "Blade." (`/public/blade-logo.png`, récupéré depuis blade-academy.fr), login hero navy style site vitrine (typographie bold uppercase, "SANS LIMITES."), favicon + titre "Blade Academy — Gestion de formation". ORG_NAME backend par défaut = "Blade Academy".
 
 ## Implemented (v1.0 — June 8 2026)
 - Authentication: JWT login/register/logout/me/refresh + Emergent Google OAuth callback.
@@ -28,6 +29,12 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - **Production documentaire**: génération PDF de 8 types de documents (convention, contrat, convocation, attestation, facture, émargement, programme, évaluation) via ReportLab.
 - **Paramètres**: 8 sections (identité, marque, intégrations mock, Qualiopi/BPF, modèles doc/email, notifications, accessibilité EDOF).
 - Seed automatique (3 entreprises, 3 formateurs, 5 apprenants, 3 financeurs, 3 lieux, 4 sessions de démo).
+
+## Rebrand Blade Academy (v1.1 — 11 juin 2026)
+- Identité visuelle reprise de https://blade-academy.fr/ (choix utilisateur : thème clair + sidebar navy + accent cyan).
+- Fichiers touchés : `tailwind.config.js` (palettes `brand` + `navy`), `index.css` (vars --brand, --primary, .blade-hero), `Layout.jsx`, `Login.jsx`, `Register.jsx`, `index.html`, remplacement global `blue-*` → `brand-*` dans pages/, `server.py` (ORG_NAME, titres API, pied de page PDF).
+- DB : `users.organisme` → "Blade Academy", admin renommé "Admin Blade Academy". Credentials inchangés (admin@formapro.fr / admin123).
+- Sous-domaine : l'utilisateur veut crm.blade-academy.fr (DNS CNAME vers déploiement Emergent, site principal reste sur Webflow) — instructions données, action côté utilisateur.
 
 ## Backlog (Next Priorities)
 ### P0 (Next iteration)

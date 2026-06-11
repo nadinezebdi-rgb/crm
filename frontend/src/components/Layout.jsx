@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
   House,
-  ChartBar,
   Kanban,
   Users,
   ChalkboardTeacher,
@@ -16,7 +15,6 @@ import {
   CaretRight,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,39 +42,39 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex bg-[rgb(var(--bg))]" data-testid="app-layout">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-slate-200 bg-white" data-testid="sidebar">
-        <div className="h-16 px-5 flex items-center border-b border-slate-200">
+      {/* Sidebar — Blade navy */}
+      <aside className="hidden md:flex flex-col w-64 shrink-0 bg-navy border-r border-navy-border" data-testid="sidebar">
+        <div className="h-16 px-5 flex items-center border-b border-white/10">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-lg bg-[rgb(var(--brand))] flex items-center justify-center text-white font-display font-semibold">
-              <ChartBar size={20} weight="duotone" />
-            </div>
+            <img src="/blade-logo.png" alt="Blade Academy" className="h-9 w-9 rounded-full ring-1 ring-white/15" />
             <div>
-              <div className="font-display font-semibold text-slate-900 tracking-tight">FormaPro</div>
-              <div className="text-[10px] uppercase tracking-widest text-slate-400">Édition Pro</div>
+              <div className="font-display font-bold tracking-tight uppercase text-white leading-tight">
+                Blade<span className="text-brand-400">Academy</span>
+              </div>
+              <div className="text-[9px] uppercase tracking-widest text-slate-400">Gestion de formation</div>
             </div>
           </div>
         </div>
 
         <nav className="flex-1 px-3 py-5 space-y-0.5">
-          <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Pilotage</div>
+          <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Pilotage</div>
           {NAV.slice(0, 2).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
-          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Données</div>
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Données</div>
           {NAV.slice(2, 7).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
-          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Config</div>
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Config</div>
           {NAV.slice(7).map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
         </nav>
 
-        <div className="p-3 border-t border-slate-200">
-          <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs">
-            <div className="font-semibold text-slate-700 mb-1">Conformité Qualiopi</div>
-            <div className="text-slate-500 leading-relaxed">Audit prêt en quelques clics depuis chaque session.</div>
+        <div className="p-3 border-t border-white/10">
+          <div className="rounded-lg bg-white/5 border border-white/10 p-3 text-xs">
+            <div className="font-semibold text-brand-300 mb-1">Conformité Qualiopi</div>
+            <div className="text-slate-400 leading-relaxed">Audit prêt en quelques clics depuis chaque session.</div>
           </div>
         </div>
       </aside>
@@ -95,7 +93,7 @@ export default function Layout() {
                 if (e.key === "Enter" && search.trim()) navigate(`/sessions?q=${encodeURIComponent(search)}`);
               }}
               placeholder="Rechercher une session, un apprenant, une entreprise…"
-              className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"
             />
           </div>
           <button
@@ -103,7 +101,7 @@ export default function Layout() {
             data-testid="notifications-btn"
           >
             <Bell size={18} weight="regular" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
           </button>
 
           <DropdownMenu>
@@ -112,7 +110,7 @@ export default function Layout() {
                 className="flex items-center gap-2.5 h-9 pl-1.5 pr-3 rounded-md border border-slate-200 hover:bg-slate-50 transition-colors"
                 data-testid="user-menu-trigger"
               >
-                <div className="h-7 w-7 rounded-full bg-slate-900 text-white text-xs font-semibold flex items-center justify-center overflow-hidden">
+                <div className="h-7 w-7 rounded-full bg-navy text-white text-xs font-semibold flex items-center justify-center overflow-hidden">
                   {user?.picture ? (
                     <img src={user.picture} alt={user.name} className="h-full w-full object-cover" />
                   ) : (
@@ -129,7 +127,7 @@ export default function Layout() {
               <DropdownMenuLabel>
                 <div className="text-xs font-semibold text-slate-900">{user?.name}</div>
                 <div className="text-[11px] text-slate-500 font-normal">{user?.email}</div>
-                <div className="text-[10px] mt-1 inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 uppercase tracking-wider font-semibold">
+                <div className="text-[10px] mt-1 inline-flex items-center px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase tracking-wider font-semibold">
                   {user?.role}
                 </div>
               </DropdownMenuLabel>
@@ -160,8 +158,8 @@ function SidebarItem({ to, label, icon: Icon, testid }) {
       className={({ isActive }) =>
         `group flex items-center gap-3 px-3 h-9 rounded-md text-sm transition-colors ${
           isActive
-            ? "bg-blue-50 text-blue-700 font-medium"
-            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            ? "bg-white/10 text-brand-300 font-medium"
+            : "text-slate-400 hover:bg-white/5 hover:text-white"
         }`
       }
     >
@@ -169,7 +167,7 @@ function SidebarItem({ to, label, icon: Icon, testid }) {
         <>
           <Icon size={18} weight={isActive ? "fill" : "regular"} />
           <span className="flex-1">{label}</span>
-          {isActive && <CaretRight size={12} className="text-blue-600" />}
+          {isActive && <CaretRight size={12} className="text-brand-400" />}
         </>
       )}
     </NavLink>

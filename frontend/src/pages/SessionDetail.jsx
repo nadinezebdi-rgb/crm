@@ -126,7 +126,7 @@ export default function SessionDetail() {
               <Badge className={`text-[10px] uppercase tracking-wider ${statusBadgeClass(session.statut)}`}>
                 {session.statut}
               </Badge>
-              {session.distanciel && <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-blue-200 text-blue-700 bg-blue-50">Distanciel</Badge>}
+              {session.distanciel && <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-brand-200 text-brand-700 bg-brand-50">Distanciel</Badge>}
               {session.inclus_bpf && <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-200 text-emerald-700 bg-emerald-50">Inclus BPF</Badge>}
             </div>
             <h1 className="font-display text-2xl lg:text-3xl font-semibold tracking-tight text-slate-900 mt-1.5 truncate">{session.nom}</h1>
@@ -264,7 +264,7 @@ export default function SessionDetail() {
                 <ul className="divide-y divide-slate-100">
                   {formateurs.map((f) => (
                     <li key={f.id} className="py-2.5 flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-blue-50 text-blue-700 text-xs font-medium flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-full bg-brand-50 text-brand-700 text-xs font-medium flex items-center justify-center">
                         {f.prenom[0]}{f.nom[0]}
                       </div>
                       <div className="flex-1">
@@ -291,9 +291,9 @@ export default function SessionDetail() {
         <TabsContent value="gestion" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {DOC_TYPES.map((d) => (
-              <Card key={d.type} className="p-4 border-slate-200 shadow-none hover:border-blue-300 transition-colors group" data-testid={`doc-${d.type}`}>
+              <Card key={d.type} className="p-4 border-slate-200 shadow-none hover:border-brand-300 transition-colors group" data-testid={`doc-${d.type}`}>
                 <div className="flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                  <div className="h-9 w-9 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
                     <d.icon size={18} weight="duotone" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -328,7 +328,7 @@ export default function SessionDetail() {
             {financeur && (
               <div className="mt-4 pt-4 border-t border-slate-100 text-sm">
                 <div className="text-xs text-slate-500 mb-1">Financeur</div>
-                <div className="font-medium text-slate-900">{financeur.nom} <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 uppercase tracking-wider">{financeur.type_financeur}</span></div>
+                <div className="font-medium text-slate-900">{financeur.nom} <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase tracking-wider">{financeur.type_financeur}</span></div>
               </div>
             )}
           </Card>
@@ -338,11 +338,11 @@ export default function SessionDetail() {
         <TabsContent value="portail" className="mt-6">
           <Card className="p-6 border-slate-200 shadow-none">
             <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center">
                 <ShareNetwork size={22} weight="duotone" />
               </div>
               <div className="flex-1">
-                <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Portail apprenants</div>
+                <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Portail apprenants</div>
                 <h3 className="font-display text-xl font-semibold tracking-tight text-slate-900 mt-1">Lien public de la session</h3>
                 <p className="text-sm text-slate-500 mt-1 max-w-2xl">Vos apprenants peuvent consulter leur programme, leurs documents et leurs évaluations depuis un portail dédié à votre marque.</p>
                 <div className="mt-4 flex items-center gap-2 max-w-xl">
@@ -385,7 +385,7 @@ function SessionTabTrigger({ value, label, testid }) {
     <TabsTrigger
       value={value}
       data-testid={testid}
-      className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:text-slate-900 text-slate-500 rounded-none px-4 h-10 font-medium text-sm"
+      className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-brand-600 data-[state=active]:text-slate-900 text-slate-500 rounded-none px-4 h-10 font-medium text-sm"
     >
       {label}
     </TabsTrigger>

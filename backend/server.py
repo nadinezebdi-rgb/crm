@@ -43,7 +43,7 @@ JWT_ALGORITHM = "HS256"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("formapro")
 
-app = FastAPI(title="FormaPro API")
+app = FastAPI(title="Blade Academy API")
 api = APIRouter(prefix="/api")
 
 
@@ -111,7 +111,7 @@ def public_user(u: dict) -> dict:
         "name": u.get("name", ""),
         "role": u.get("role", "admin"),
         "picture": u.get("picture"),
-        "organisme": u.get("organisme", os.environ.get("ORG_NAME", "FormaPro")),
+        "organisme": u.get("organisme", os.environ.get("ORG_NAME", "Blade Academy")),
         "auth_provider": u.get("auth_provider", "local"),
     }
 
@@ -276,7 +276,7 @@ async def register(payload: RegisterPayload, response: Response):
         "name": payload.name,
         "role": payload.role,
         "auth_provider": "local",
-        "organisme": os.environ.get("ORG_NAME", "FormaPro"),
+        "organisme": os.environ.get("ORG_NAME", "Blade Academy"),
         "created_at": now_utc().isoformat(),
     }
     await db.users.insert_one(doc)
@@ -347,7 +347,7 @@ async def emergent_session(request: Request, response: Response):
             "picture": data.get("picture"),
             "role": "admin",
             "auth_provider": "google",
-            "organisme": os.environ.get("ORG_NAME", "FormaPro"),
+            "organisme": os.environ.get("ORG_NAME", "Blade Academy"),
             "created_at": now_utc().isoformat(),
         }
         await db.users.insert_one(user_doc)
@@ -624,7 +624,7 @@ def build_pdf(title: str, lines: List[str]) -> bytes:
     c.rect(0, height - 3 * cm, width, 3 * cm, fill=1, stroke=0)
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 20)
-    c.drawString(2 * cm, height - 2 * cm, os.environ.get("ORG_NAME", "FormaPro"))
+    c.drawString(2 * cm, height - 2 * cm, os.environ.get("ORG_NAME", "Blade Academy"))
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, height - 2.6 * cm, "Organisme de formation certifié Qualiopi")
 
@@ -648,7 +648,7 @@ def build_pdf(title: str, lines: List[str]) -> bytes:
     c.setFillColor(colors.HexColor("#64748B"))
     c.setFont("Helvetica", 8)
     c.drawString(2 * cm, 1.5 * cm, f"Document généré le {now_utc().strftime('%d/%m/%Y à %H:%M UTC')}")
-    c.drawRightString(width - 2 * cm, 1.5 * cm, "Conforme Qualiopi - FormaPro")
+    c.drawRightString(width - 2 * cm, 1.5 * cm, "Conforme Qualiopi - Blade Academy")
 
     c.save()
     buf.seek(0)
@@ -689,7 +689,7 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
         "Article 1 - Objet",
         "Le présent document a valeur conformément à la réglementation Qualiopi.",
         "Article 2 - Modalités",
-        "Le présent document est généré automatiquement par la plateforme FormaPro.",
+        "Le présent document est généré automatiquement par la plateforme Blade Academy.",
     ]
     pdf = build_pdf(valid[doc_type], lines)
     return StreamingResponse(
@@ -715,7 +715,7 @@ async def seed():
             "name": os.environ.get("ADMIN_NAME", "Admin"),
             "role": "admin",
             "auth_provider": "local",
-            "organisme": os.environ.get("ORG_NAME", "FormaPro"),
+            "organisme": os.environ.get("ORG_NAME", "Blade Academy"),
             "created_at": now_utc().isoformat(),
         })
     elif not verify_password(admin_password, existing.get("password_hash", "")):
@@ -859,7 +859,7 @@ async def shutdown():
 # ---------------------------------------------------------------------------
 @api.get("/")
 async def root():
-    return {"service": "FormaPro API", "version": "1.0.0"}
+    return {"service": "Blade Academy API", "version": "1.0.0"}
 
 
 app.include_router(api)

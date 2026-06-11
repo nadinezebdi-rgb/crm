@@ -54,7 +54,7 @@ export default function Dashboard() {
     <div className="p-6 lg:p-8 space-y-7" data-testid="dashboard-page">
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Accueil</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Accueil</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900 mt-1">Tableau de bord</h1>
           <p className="text-sm text-slate-500 mt-1">Synthèse de votre activité de formation en temps réel.</p>
         </div>
@@ -65,7 +65,7 @@ export default function Dashboard() {
             </Button>
           </Link>
           <Link to="/sessions/new">
-            <Button data-testid="create-session-btn" className="bg-blue-600 hover:bg-blue-700">
+            <Button data-testid="create-session-btn" className="bg-brand-600 hover:bg-brand-700">
               <Plus size={16} className="mr-1.5" /> Nouvelle session
             </Button>
           </Link>
@@ -88,7 +88,7 @@ export default function Dashboard() {
               <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Sessions par statut</div>
               <div className="font-display text-lg font-medium text-slate-900 mt-0.5">Répartition Kanban</div>
             </div>
-            <Link to="/sessions" className="text-xs text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">
+            <Link to="/sessions" className="text-xs text-brand-600 hover:text-brand-700 font-medium inline-flex items-center gap-1">
               Ouvrir <ArrowUpRight size={12} />
             </Link>
           </div>
@@ -130,7 +130,7 @@ export default function Dashboard() {
             <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Calendrier</div>
             <div className="font-display text-lg font-medium text-slate-900 mt-0.5">Sessions programmées</div>
           </div>
-          <Link to="/sessions" className="text-xs text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">
+          <Link to="/sessions" className="text-xs text-brand-600 hover:text-brand-700 font-medium inline-flex items-center gap-1">
             Vue Kanban <ArrowUpRight size={12} />
           </Link>
         </div>
@@ -147,7 +147,7 @@ export default function Dashboard() {
                 className="flex items-center gap-4 py-3 hover:bg-slate-50 -mx-2 px-2 rounded-md transition-colors"
                 data-testid={`calendar-item-${s.id}`}
               >
-                <div className="w-12 h-12 rounded-md bg-blue-50 text-blue-700 flex flex-col items-center justify-center flex-shrink-0">
+                <div className="w-12 h-12 rounded-md bg-brand-50 text-brand-700 flex flex-col items-center justify-center flex-shrink-0">
                   <CalendarBlank size={16} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -156,7 +156,7 @@ export default function Dashboard() {
                     <span className="font-mono">{s.code_interne}</span>
                     <span>•</span>
                     <span>{s.date_debut} → {s.date_fin}</span>
-                    {s.distanciel && <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px] border-blue-200 text-blue-700 bg-blue-50">Distanciel</Badge>}
+                    {s.distanciel && <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px] border-brand-200 text-brand-700 bg-brand-50">Distanciel</Badge>}
                   </div>
                 </div>
                 <Badge className={`text-[10px] uppercase tracking-wider font-medium ${statusBadgeClass(s.statut)}`}>
@@ -173,7 +173,7 @@ export default function Dashboard() {
 
 function Kpi({ icon: Icon, label, value, hint, accent, testid, progress }) {
   const accentMap = {
-    blue: "bg-blue-50 text-blue-700",
+    blue: "bg-brand-50 text-brand-700",
     emerald: "bg-emerald-50 text-emerald-700",
     amber: "bg-amber-50 text-amber-700",
     slate: "bg-slate-100 text-slate-700",
@@ -215,7 +215,7 @@ export function statusBadgeClass(statut) {
   const map = {
     brouillon: "bg-slate-100 text-slate-700 border-slate-200",
     planification: "bg-amber-50 text-amber-700 border-amber-200",
-    planifiee: "bg-blue-50 text-blue-700 border-blue-200",
+    planifiee: "bg-brand-50 text-brand-700 border-brand-200",
     terminee: "bg-emerald-50 text-emerald-700 border-emerald-200",
     archivee: "bg-neutral-100 text-neutral-600 border-neutral-200",
   };

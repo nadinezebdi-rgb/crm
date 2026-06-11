@@ -7,8 +7,9 @@
     --font-body: 'IBM Plex Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-    --brand: 37 99 235;      /* blue-600 */
-    --brand-dark: 29 78 216;
+    --brand: 14 127 182;     /* Blade cyan #0E7FB6 */
+    --brand-dark: 12 105 151;
+    --navy: 11 23 38;        /* Blade navy #0B1726 */
     --ink: 15 23 42;
     --muted-ink: 100 116 139;
     --surface: 255 255 255;
@@ -48,19 +49,19 @@ h1, h2, h3, h4, h5, h6, .font-display {
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
-        --primary: 221 83% 53%;
+        --primary: 200 86% 38%;
         --primary-foreground: 0 0% 100%;
         --secondary: 210 40% 96%;
         --secondary-foreground: 222 47% 11%;
         --muted: 210 40% 96%;
         --muted-foreground: 215 16% 47%;
-        --accent: 221 83% 96%;
-        --accent-foreground: 221 83% 30%;
+        --accent: 200 80% 95%;
+        --accent-foreground: 200 86% 26%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 100%;
         --border: 214 32% 91%;
         --input: 214 32% 91%;
-        --ring: 221 83% 53%;
+        --ring: 200 86% 38%;
         --radius: 0.5rem;
     }
 }
@@ -87,9 +88,20 @@ h1, h2, h3, h4, h5, h6, .font-display {
 
 .brand-grad {
     background:
-        radial-gradient(800px 400px at -10% -20%, rgba(37, 99, 235, 0.10), transparent 60%),
-        radial-gradient(600px 400px at 110% 110%, rgba(15, 23, 42, 0.05), transparent 60%),
+        radial-gradient(800px 400px at -10% -20%, rgba(14, 127, 182, 0.10), transparent 60%),
+        radial-gradient(600px 400px at 110% 110%, rgba(11, 23, 38, 0.05), transparent 60%),
         #ffffff;
+}
+
+/* Blade Academy hero (navy + cyan glows + dots, like blade-academy.fr) */
+.blade-hero {
+    background-color: #0B1726;
+    background-image:
+        radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        radial-gradient(900px 500px at 80% 15%, rgba(79, 192, 238, 0.14), transparent 60%),
+        radial-gradient(700px 450px at 5% 95%, rgba(79, 192, 238, 0.08), transparent 60%),
+        linear-gradient(160deg, #0B1726 0%, #0E2238 55%, #0B1726 100%);
+    background-size: 20px 20px, auto, auto, auto;
 }
 
 @layer base {

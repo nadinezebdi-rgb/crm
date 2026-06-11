@@ -109,7 +109,7 @@ export default function SessionCreate() {
         <button onClick={() => navigate("/sessions")} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 mb-2">
           <ArrowLeft size={12} /> Retour aux sessions
         </button>
-        <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Nouvelle session</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Nouvelle session</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900 mt-1">Création guidée</h1>
         <p className="text-sm text-slate-500 mt-1">Renseignez les informations essentielles en 4 étapes.</p>
       </header>
@@ -124,7 +124,7 @@ export default function SessionCreate() {
                 idx === step
                   ? "bg-slate-900 text-white"
                   : idx < step
-                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  ? "bg-brand-50 text-brand-700 border border-brand-200"
                   : "bg-white border border-slate-200 text-slate-500"
               }`}
             >
@@ -269,9 +269,9 @@ export default function SessionCreate() {
               <Toggle label="Inclus dans le BPF (Bilan Pédagogique et Financier)" checked={form.inclus_bpf} onChange={(v) => set("inclus_bpf", v)} testid="field-bpf" />
             </FieldRow>
 
-            <div className="rounded-md border border-blue-200 bg-blue-50 text-blue-900 p-4 text-sm">
+            <div className="rounded-md border border-brand-200 bg-brand-50 text-brand-900 p-4 text-sm">
               <div className="font-semibold mb-1">Récapitulatif</div>
-              <div className="text-xs text-blue-800">
+              <div className="text-xs text-brand-800">
                 Session « <span className="font-medium">{form.nom || "Sans nom"}</span> » — Prix HT <span className="font-mono">{Number(form.prix_ht || 0).toLocaleString("fr-FR")} €</span>, Coût HT <span className="font-mono">{Number(form.cout_ht || 0).toLocaleString("fr-FR")} €</span>, marge {form.prix_ht > 0 ? Math.round(((form.prix_ht - form.cout_ht) / form.prix_ht) * 100) : 0}%.
               </div>
             </div>
@@ -287,7 +287,7 @@ export default function SessionCreate() {
               Suivant <ArrowRight size={14} className="ml-1.5" />
             </Button>
           ) : (
-            <Button onClick={submit} disabled={submitting || !form.nom} data-testid="session-save" className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={submit} disabled={submitting || !form.nom} data-testid="session-save" className="bg-brand-600 hover:bg-brand-700">
               <FloppyDisk size={14} className="mr-1.5" /> {submitting ? "Création…" : "Créer la session"}
             </Button>
           )}
@@ -333,8 +333,8 @@ function MultiSelect({ label, options, value, onChange, testid }) {
               onClick={() => toggle(o.id)}
               className={`px-2.5 h-7 rounded-full text-xs font-medium border transition-colors ${
                 selected
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:text-blue-700"
+                  ? "bg-brand-600 text-white border-brand-600"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-brand-300 hover:text-brand-700"
               }`}
             >
               {o.label}

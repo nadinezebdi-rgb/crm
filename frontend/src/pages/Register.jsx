@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatApiError } from "@/lib/api";
-import { ChartBar, ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "@phosphor-icons/react";
 
 export default function Register() {
   const { register } = useAuth();
@@ -33,10 +33,10 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center bg-[rgb(var(--bg))] p-6">
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-lg p-8 animate-fade-in-up" data-testid="register-page">
         <div className="flex items-center gap-2.5 mb-6">
-          <div className="h-9 w-9 rounded-lg bg-[rgb(var(--brand))] flex items-center justify-center text-white">
-            <ChartBar size={20} weight="duotone" />
+          <img src="/blade-logo.png" alt="Blade Academy" className="h-9 w-9 rounded-full" />
+          <div className="font-display font-bold uppercase tracking-tight text-slate-900">
+            Blade<span className="text-brand-600">Academy</span>
           </div>
-          <div className="font-display font-semibold text-slate-900">FormaPro</div>
         </div>
 
         <h1 className="font-display text-2xl font-semibold tracking-tight">Créer votre compte</h1>
@@ -70,14 +70,14 @@ export default function Register() {
             </Select>
           </div>
 
-          <Button type="submit" data-testid="register-submit" className="w-full mt-4 h-10 bg-blue-600 hover:bg-blue-700" disabled={submitting}>
+          <Button type="submit" data-testid="register-submit" className="w-full mt-4 h-10 bg-brand-600 hover:bg-brand-700" disabled={submitting}>
             {submitting ? "Création…" : (<>Créer le compte <ArrowRight size={14} className="ml-1.5" /></>)}
           </Button>
         </form>
 
         <p className="mt-5 text-xs text-slate-500 text-center">
           Déjà inscrit ?{" "}
-          <Link to="/login" data-testid="goto-login" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/login" data-testid="goto-login" className="text-brand-600 hover:text-brand-700 font-medium">
             Se connecter
           </Link>
         </p>

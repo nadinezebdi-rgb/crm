@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatApiError } from "@/lib/api";
-import { ChartBar, GoogleLogo, ShieldCheck, ArrowRight } from "@phosphor-icons/react";
+import { GoogleLogo, ShieldCheck, ArrowRight } from "@phosphor-icons/react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -39,27 +39,30 @@ export default function Login() {
   const hasError = new URLSearchParams(location.search).get("error");
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-5 brand-grad" data-testid="login-page">
-      {/* Left visual */}
-      <div className="hidden lg:flex lg:col-span-3 flex-col justify-between p-12 relative overflow-hidden dotted-bg">
-        <div className="flex items-center gap-2.5">
-          <div className="h-10 w-10 rounded-lg bg-[rgb(var(--brand))] flex items-center justify-center text-white">
-            <ChartBar size={22} weight="duotone" />
-          </div>
+    <div className="min-h-screen grid lg:grid-cols-5" data-testid="login-page">
+      {/* Left visual — Blade Academy hero */}
+      <div className="hidden lg:flex lg:col-span-3 flex-col justify-between p-12 relative overflow-hidden blade-hero">
+        <div className="flex items-center gap-3">
+          <img src="/blade-logo.png" alt="Blade Academy" className="h-11 w-11 rounded-full ring-1 ring-white/20" />
           <div>
-            <div className="font-display font-semibold text-slate-900 text-lg">FormaPro</div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-400">Édition Pro</div>
+            <div className="font-display font-bold uppercase tracking-tight text-white text-lg leading-tight">
+              Blade<span className="text-brand-400">Academy</span>
+            </div>
+            <div className="text-[9px] uppercase tracking-widest text-slate-400">Qualiopi N°338511-1 · Actions de formation</div>
           </div>
         </div>
 
         <div className="max-w-xl">
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-700 mb-3">Plateforme conforme Qualiopi</div>
-          <h1 className="font-display text-4xl lg:text-5xl font-semibold text-slate-900 tracking-tight leading-[1.05]">
-            Pilotez tout votre organisme<br />de formation.<span className="text-blue-600">.</span>
+          <div className="inline-flex items-center px-3 py-1 rounded-full border border-brand-400/40 bg-brand-400/10 text-[11px] font-semibold uppercase tracking-widest text-brand-300 mb-5">
+            Plateforme de gestion · Qualiopi
+          </div>
+          <h1 className="font-display text-4xl lg:text-5xl font-bold uppercase text-white tracking-tight leading-[1.05]">
+            Pilotez vos formations<br />
+            <span className="text-brand-400">sans limites.</span>
           </h1>
-          <p className="mt-5 text-slate-600 leading-relaxed max-w-md">
-            Du tunnel commercial à la délivrance des attestations Qualiopi : sessions, apprenants, contrats et BPF, dans
-            un seul outil clair et professionnel.
+          <p className="mt-5 text-slate-300 italic leading-relaxed max-w-md">
+            Sessions, apprenants, conventions et BPF : tout votre organisme de formation, certifié Qualiopi, dans un
+            seul outil d'excellence.
           </p>
 
           <div className="mt-10 grid grid-cols-2 gap-3 max-w-md">
@@ -67,18 +70,18 @@ export default function Login() {
               { k: "Sessions", v: "Kanban temps réel" },
               { k: "Qualiopi", v: "Checklist auto" },
               { k: "BPF", v: "Inclusion/Exclusion" },
-              { k: "Portails", v: "Apprenants & entreprises" },
+              { k: "Documents", v: "Conventions & attestations" },
             ].map((it) => (
-              <div key={it.k} className="rounded-md border border-slate-200 bg-white/70 backdrop-blur p-3">
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{it.k}</div>
-                <div className="text-sm text-slate-900 font-medium mt-0.5">{it.v}</div>
+              <div key={it.k} className="rounded-md border border-white/10 bg-white/5 backdrop-blur p-3">
+                <div className="text-[10px] uppercase tracking-widest text-brand-300 font-semibold">{it.k}</div>
+                <div className="text-sm text-white font-medium mt-0.5">{it.v}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="text-xs text-slate-500 flex items-center gap-2">
-          <ShieldCheck size={14} /> Données hébergées en Europe • Conformité Qualiopi & BPF
+        <div className="text-xs text-slate-400 flex items-center gap-2">
+          <ShieldCheck size={14} className="text-brand-400" /> Données hébergées en Europe • Conformité Qualiopi & BPF
         </div>
       </div>
 
@@ -86,8 +89,9 @@ export default function Login() {
       <div className="lg:col-span-2 flex items-center justify-center p-6 sm:p-12 bg-white border-l border-slate-200">
         <form onSubmit={onSubmit} className="w-full max-w-sm animate-fade-in-up" data-testid="login-form">
           <div className="mb-7">
-            <div className="text-xs font-semibold uppercase tracking-widest text-blue-700 mb-2">Bienvenue</div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Connectez-vous à FormaPro</h2>
+            <img src="/blade-logo.png" alt="Blade Academy" className="h-10 w-10 rounded-full mb-4 lg:hidden" />
+            <div className="text-xs font-semibold uppercase tracking-widest text-brand-700 mb-2">Bienvenue</div>
+            <h2 className="font-display text-2xl font-semibold tracking-tight">Connectez-vous à Blade Academy</h2>
             <p className="text-sm text-slate-500 mt-1">Accédez à vos sessions et votre référentiel.</p>
           </div>
 
@@ -121,7 +125,7 @@ export default function Login() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@organisme.fr"
+                placeholder="vous@blade-academy.fr"
                 required
                 className="mt-1"
               />
@@ -141,13 +145,13 @@ export default function Login() {
             </div>
           </div>
 
-          <Button type="submit" data-testid="login-submit" className="w-full mt-5 h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium" disabled={submitting}>
+          <Button type="submit" data-testid="login-submit" className="w-full mt-5 h-10 bg-navy hover:bg-navy-light text-white font-medium" disabled={submitting}>
             {submitting ? "Connexion…" : (<>Se connecter <ArrowRight size={14} className="ml-1.5" /></>)}
           </Button>
 
           <p className="mt-5 text-xs text-slate-500 text-center">
             Pas encore de compte ?{" "}
-            <Link to="/register" data-testid="goto-register" className="text-blue-600 hover:text-blue-700 font-medium">
+            <Link to="/register" data-testid="goto-register" className="text-brand-600 hover:text-brand-700 font-medium">
               Créer un compte
             </Link>
           </p>

@@ -13,7 +13,7 @@ export default function Lieux() {
         { key: "nom", label: "Nom" },
         { key: "ville", label: "Ville" },
         { key: "capacite", label: "Capacité", render: (l) => `${l.capacite} pers.` },
-        { key: "type", label: "Type", render: (l) => l.distanciel ? <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">Distanciel</Badge> : <Badge variant="outline">Présentiel</Badge> },
+        { key: "type", label: "Type", render: (l) => l.distanciel ? <Badge variant="outline" className="border-brand-200 bg-brand-50 text-brand-700">Distanciel</Badge> : <Badge variant="outline">Présentiel</Badge> },
       ]}
       blank={{ nom: "", adresse: "", code_postal: "", ville: "", capacite: 10, equipements: [], distanciel: false, notes: "" }}
       fields={[

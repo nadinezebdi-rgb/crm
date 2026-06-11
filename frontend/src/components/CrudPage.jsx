@@ -79,7 +79,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
     <div className="p-6 lg:p-8" data-testid={testid}>
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">Données</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Données</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900 mt-1">{title}</h1>
           <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
         </div>
@@ -90,7 +90,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700" onClick={startCreate} data-testid={`${testid}-new-btn`}>
+              <Button className="bg-brand-600 hover:bg-brand-700" onClick={startCreate} data-testid={`${testid}-new-btn`}>
                 <Plus size={16} className="mr-1.5" /> Nouveau
               </Button>
             </DialogTrigger>
@@ -105,7 +105,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
                     {f.type === "textarea" ? (
                       <textarea
                         rows={3}
-                        className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                         value={form[f.key] ?? ""}
                         onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
                       />
@@ -150,7 +150,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)} className="border-slate-200">Annuler</Button>
-                <Button onClick={save} className="bg-blue-600 hover:bg-blue-700" data-testid={`${testid}-save-btn`}>
+                <Button onClick={save} className="bg-brand-600 hover:bg-brand-700" data-testid={`${testid}-save-btn`}>
                   {editing ? "Mettre à jour" : "Créer"}
                 </Button>
               </DialogFooter>

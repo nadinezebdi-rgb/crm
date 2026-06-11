@@ -12,7 +12,7 @@ export default function Formateurs() {
       columns={[
         { key: "prenom", label: "Prénom" },
         { key: "nom", label: "Nom" },
-        { key: "type", label: "Statut", render: (f) => <Badge variant="outline" className={f.interne ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}>{f.interne ? "Interne" : "Externe"}</Badge> },
+        { key: "type", label: "Statut", render: (f) => <Badge variant="outline" className={f.interne ? "border-brand-200 bg-brand-50 text-brand-700" : "border-amber-200 bg-amber-50 text-amber-700"}>{f.interne ? "Interne" : "Externe"}</Badge> },
         { key: "email", label: "Email" },
         { key: "tarif_journalier", label: "Tarif/j", render: (f) => `${f.tarif_journalier || 0} €` },
       ]}
