@@ -1,4 +1,4 @@
-"""FormaPro - Backend API.
+"""Blade Academy CRM - Backend API.
 
 Plateforme de gestion d'organisme de formation.
 FastAPI + MongoDB monolithic server (MVP).
@@ -41,7 +41,7 @@ db = client[os.environ["DB_NAME"]]
 JWT_ALGORITHM = "HS256"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("formapro")
+logger = logging.getLogger("blade_academy")
 
 app = FastAPI(title="Blade Academy API")
 api = APIRouter(prefix="/api")
@@ -703,8 +703,27 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
 # Seed + startup
 # ---------------------------------------------------------------------------
 async def seed():
+    # --- Migration idempotente de rebranding (FormaPro -> Blade Academy) ---
+    # Nécessaire pour mettre à jour les bases existantes (dev ET production).
+    old_admin = await db.users.find_one({"email": "admin@formapro.fr"})
+    if old_admin and not await db.users.find_one({"email": "admin@blade-academy.fr"}):
+        await db.users.update_one(
+            {"email": "admin@formapro.fr"},
+            {"$set": {"email": "admin@blade-academy.fr", "name": "Admin Blade Academy"}},
+        )
+    await db.users.update_many(
+        {"organisme": {"$in": ["FormaPro", "FormaPro Académie"]}},
+        {"$set": {"organisme": "Blade Academy"}},
+    )
+    await db.lieux.update_many({"nom": "Centre FormaPro Paris"}, {"$set": {"nom": "Centre Blade Academy Paris"}})
+    async for f in db.formateurs.find({"email": {"$regex": "@formapro\\.fr$"}}):
+        await db.formateurs.update_one(
+            {"id": f["id"]},
+            {"$set": {"email": f["email"].replace("@formapro.fr", "@blade-academy.fr")}},
+        )
+
     # Admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@formapro.fr")
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@blade-academy.fr")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
@@ -732,9 +751,9 @@ async def seed():
 
     if await db.formateurs.count_documents({}) == 0:
         formateurs = [
-            {"id": new_id(), "nom": "Lefebvre", "prenom": "Camille", "email": "c.lefebvre@formapro.fr", "interne": True, "specialites": ["Gestion de projet", "Agile"], "tarif_journalier": 850, "created_at": now_utc().isoformat()},
+            {"id": new_id(), "nom": "Lefebvre", "prenom": "Camille", "email": "c.lefebvre@blade-academy.fr", "interne": True, "specialites": ["Gestion de projet", "Agile"], "tarif_journalier": 850, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Moreau", "prenom": "Antoine", "email": "a.moreau@externe.fr", "interne": False, "specialites": ["Cybersécurité"], "tarif_journalier": 1200, "created_at": now_utc().isoformat()},
-            {"id": new_id(), "nom": "Garcia", "prenom": "Inès", "email": "i.garcia@formapro.fr", "interne": True, "specialites": ["Communication", "Management"], "tarif_journalier": 950, "created_at": now_utc().isoformat()},
+            {"id": new_id(), "nom": "Garcia", "prenom": "Inès", "email": "i.garcia@blade-academy.fr", "interne": True, "specialites": ["Communication", "Management"], "tarif_journalier": 950, "created_at": now_utc().isoformat()},
         ]
         await db.formateurs.insert_many(formateurs)
 
@@ -758,7 +777,7 @@ async def seed():
 
     if await db.lieux.count_documents({}) == 0:
         lieux = [
-            {"id": new_id(), "nom": "Centre FormaPro Paris", "adresse": "12 rue de la République", "code_postal": "75011", "ville": "Paris", "capacite": 20, "distanciel": False, "created_at": now_utc().isoformat()},
+            {"id": new_id(), "nom": "Centre Blade Academy Paris", "adresse": "12 rue de la République", "code_postal": "75011", "ville": "Paris", "capacite": 20, "distanciel": False, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Espace Lyon Confluence", "adresse": "5 cours Charlemagne", "code_postal": "69002", "ville": "Lyon", "capacite": 15, "distanciel": False, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Distanciel - Zoom", "capacite": 100, "distanciel": True, "created_at": now_utc().isoformat()},
         ]
@@ -846,7 +865,7 @@ async def startup():
     await db.sessions.create_index("id", unique=True)
     await db.user_sessions.create_index("session_token")
     await seed()
-    logger.info("FormaPro API ready ✅")
+    logger.info("Blade Academy API ready ✅")
 
 
 @app.on_event("shutdown")

@@ -12,7 +12,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@formapro.fr");
+  const [email, setEmail] = useState("admin@blade-academy.fr");
   const [password, setPassword] = useState("admin123");
   const [submitting, setSubmitting] = useState(false);
 
@@ -157,7 +157,7 @@ export default function Login() {
           </p>
 
           <div className="mt-8 rounded-md bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-700">Démo :</span> admin@formapro.fr / admin123
+            <span className="font-semibold text-slate-700">Démo :</span> admin@blade-academy.fr / admin123
           </div>
         </form>
       </div>

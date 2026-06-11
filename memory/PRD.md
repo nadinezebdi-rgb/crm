@@ -33,7 +33,7 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 ## Rebrand Blade Academy (v1.1 — 11 juin 2026)
 - Identité visuelle reprise de https://blade-academy.fr/ (choix utilisateur : thème clair + sidebar navy + accent cyan).
 - Fichiers touchés : `tailwind.config.js` (palettes `brand` + `navy`), `index.css` (vars --brand, --primary, .blade-hero), `Layout.jsx`, `Login.jsx`, `Register.jsx`, `index.html`, remplacement global `blue-*` → `brand-*` dans pages/, `server.py` (ORG_NAME, titres API, pied de page PDF).
-- DB : `users.organisme` → "Blade Academy", admin renommé "Admin Blade Academy". Credentials inchangés (admin@formapro.fr / admin123).
+- DB : `users.organisme` → "Blade Academy", admin renommé "Admin Blade Academy". **Credentials migrés (11 juin) : admin@blade-academy.fr / admin123** (migration idempotente au démarrage dans `seed()` — fonctionne aussi en production au prochain redéploiement ; l'ancien admin@formapro.fr n'existe plus). Données démo nettoyées (emails formateurs, lieu "Centre Blade Academy Paris"). `.env` backend : ADMIN_EMAIL/ADMIN_NAME/ORG_NAME mis à jour (DB_NAME inchangé).
 - Sous-domaine : l'utilisateur veut crm.blade-academy.fr (DNS CNAME vers déploiement Emergent, site principal reste sur Webflow) — instructions données, action côté utilisateur.
 
 ## Backlog (Next Priorities)
