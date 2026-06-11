@@ -21,7 +21,7 @@ import { Plus, MagnifyingGlass, Trash, PencilSimple } from "@phosphor-icons/reac
  * Props:
  *  - title, subtitle, endpoint, columns, fields, blank, badges?
  */
-export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid }) {
+export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid, extraActions }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -88,6 +88,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…" className="pl-9 w-64 bg-white" data-testid={`${testid}-search`} />
           </div>
+          {typeof extraActions === "function" ? extraActions(load) : extraActions}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="bg-brand-600 hover:bg-brand-700" onClick={startCreate} data-testid={`${testid}-new-btn`}>

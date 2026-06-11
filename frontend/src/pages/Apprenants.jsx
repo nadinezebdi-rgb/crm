@@ -1,5 +1,6 @@
 import React from "react";
 import CrudPage from "@/components/CrudPage";
+import ImportEdofDialog from "@/components/ImportEdofDialog";
 
 export default function Apprenants() {
   return (
@@ -8,6 +9,7 @@ export default function Apprenants() {
       subtitle="Vos stagiaires et bénéficiaires de formation."
       endpoint="apprenants"
       testid="apprenants-page"
+      extraActions={(reload) => <ImportEdofDialog onDone={reload} />}
       columns={[
         { key: "prenom", label: "Prénom" },
         { key: "nom", label: "Nom" },

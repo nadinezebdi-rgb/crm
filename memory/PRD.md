@@ -82,6 +82,14 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - ⚠️ TVA 20% appliquée par défaut — si l'organisme est exonéré (art. 261-4-4°-a CGI), adapter `_prix_lignes` dans documents.py.
 - Testé : 8 PDF HTTP 200, mots-clés juridiques vérifiés par extraction, mise en page validée visuellement (analyse PDF).
 
+## Import EDOF / CPF (v1.4 — 11 juin 2026)
+- Nouveau module `/app/backend/import_edof.py` : parsing CSV (séparateurs ;/,/tab, encodages utf-8/cp1252/latin-1) et Excel .xlsx (openpyxl), détection automatique des colonnes EDOF standard (mots-clés normalisés sans accents), parsing dates FR (dd/mm/yyyy…) et montants FR ("1 495,00 €").
+- Endpoints : `POST /api/import/edof/preview` (upload multipart → colonnes + mapping auto + lignes) et `POST /api/import/edof/commit` (rows + mapping + create_sessions).
+- Logique commit : dédoublonnage apprenants par email (sinon nom+prénom, insensible casse), notes "Importé depuis EDOF… Dossier CPF n° X", lignes annulées/refusées ignorées (reportées), regroupement par (formation, date début, date fin) → création sessions (statut auto : terminee si passée / planifiee / brouillon, prix_ht = somme des dossiers, financeur CPF find-or-create type_financeur=cpf, apprenants rattachés). Ré-import idempotent (sessions complétées, pas de doublons).
+- Frontend : `ImportEdofDialog.jsx` (3 étapes : fichier → mappage corrigeable + aperçu 5 lignes + case "créer les sessions" → résultat avec stats et lignes ignorées). Bouton "Importer EDOF (CPF)" sur la page Apprenants via prop `extraActions` ajoutée à CrudPage.
+- data-testid : edof-import-btn, edof-file-input, edof-mapping-{champ}, edof-create-sessions, edof-commit-btn, edof-result, edof-close-btn.
+- Testé e2e : CSV cp1252 + XLSX, mapping auto 10/10, commit (4 apprenants, 3 sessions, 1 annulé ignoré, doublon email fusionné), ré-import idempotent, UI vérifiée par screenshots (fix overflow modal min-w-0). Données de test nettoyées.
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`

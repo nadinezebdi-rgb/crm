@@ -12,22 +12,24 @@ load_dotenv(ROOT_DIR / ".env")
 
 import io
 import os
+import re
 import uuid
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 
 import bcrypt
 import jwt
 import httpx
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, File, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from documents import build_pdf, DOC_BUILDERS
+from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount
 
 # ---------------------------------------------------------------------------
 # Config
@@ -668,6 +670,177 @@ async def update_organisme(payload: OrganismeSettings, user: dict = Depends(get_
     await db.organisme_settings.update_one(
         {"key": "organisme"}, {"$set": payload.model_dump()}, upsert=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Import EDOF / Mon Compte Formation (CPF)
+# ---------------------------------------------------------------------------
+class EdofCommitPayload(BaseModel):
+    rows: List[Dict[str, Any]]
+    mapping: Dict[str, Optional[str]]
+    create_sessions: bool = True
+
+
+@api.post("/import/edof/preview")
+async def edof_preview(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10 Mo)")
+    try:
+        columns, rows = parse_import_file(file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not rows:
+        raise HTTPException(status_code=400, detail="Aucune ligne de données détectée dans le fichier")
+    return {
+        "columns": columns,
+        "mapping": auto_map(columns),
+        "fields": TARGET_FIELDS,
+        "rows": rows,
+        "total": len(rows),
+    }
+
+
+@api.post("/import/edof/commit")
+async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_current_user)):
+    mapping = payload.mapping
+
+    def val(row, field):
+        col = mapping.get(field)
+        return str(row.get(col) or "").strip() if col else ""
+
+    if not mapping.get("nom") or not mapping.get("prenom"):
+        raise HTTPException(status_code=400, detail="Les colonnes Nom et Prénom doivent être mappées")
+
+    stats = {
+        "apprenants_crees": 0,
+        "apprenants_existants": 0,
+        "sessions_creees": 0,
+        "sessions_maj": 0,
+        "lignes_ignorees": [],
+    }
+    today_iso = now_utc().date().isoformat()
+    import_note = f"Importé depuis EDOF (CPF) le {now_utc().strftime('%d/%m/%Y')}"
+
+    # Financeur CPF (find-or-create) pour rattacher les sessions créées
+    financeur_cpf = None
+    if payload.create_sessions:
+        financeur_cpf = await db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
+        if not financeur_cpf:
+            financeur_cpf = {
+                "id": new_id(),
+                "nom": "Caisse des Dépôts — Mon Compte Formation",
+                "type_financeur": "cpf",
+                "code": "CPF",
+                "email": None, "telephone": None, "adresse": None,
+                "notes": "Créé automatiquement lors de l'import EDOF.",
+                "created_at": now_utc().isoformat(),
+                "updated_at": now_utc().isoformat(),
+            }
+            await db.financeurs.insert_one(dict(financeur_cpf))
+            financeur_cpf.pop("_id", None)
+
+    session_groups: Dict[tuple, dict] = {}
+
+    for i, row in enumerate(payload.rows):
+        line_no = i + 2  # +1 en-tête, +1 indexation humaine
+        nom, prenom = val(row, "nom"), val(row, "prenom")
+        if not nom or not prenom:
+            stats["lignes_ignorees"].append(f"Ligne {line_no} : nom ou prénom manquant")
+            continue
+        statut_dossier = val(row, "statut").lower()
+        if "annul" in statut_dossier or "refus" in statut_dossier:
+            stats["lignes_ignorees"].append(f"Ligne {line_no} : dossier « {val(row, 'statut')} »")
+            continue
+
+        email = val(row, "email").lower()
+        if email:
+            query = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+        else:
+            query = {
+                "nom": {"$regex": f"^{re.escape(nom)}$", "$options": "i"},
+                "prenom": {"$regex": f"^{re.escape(prenom)}$", "$options": "i"},
+            }
+        existing = await db.apprenants.find_one(query, {"_id": 0, "id": 1})
+        if existing:
+            apprenant_id = existing["id"]
+            stats["apprenants_existants"] += 1
+        else:
+            apprenant_id = new_id()
+            dossier = val(row, "dossier")
+            notes = import_note + (f" — Dossier CPF n° {dossier}" if dossier else "")
+            await db.apprenants.insert_one({
+                "id": apprenant_id,
+                "nom": nom,
+                "prenom": prenom,
+                "email": email or None,
+                "telephone": val(row, "telephone") or None,
+                "entreprise_id": None,
+                "date_naissance": None,
+                "adresse": None,
+                "notes": notes,
+                "created_at": now_utc().isoformat(),
+                "updated_at": now_utc().isoformat(),
+            })
+            stats["apprenants_crees"] += 1
+
+        if payload.create_sessions:
+            formation = val(row, "formation")
+            if not formation:
+                continue
+            d1 = parse_date_fr(val(row, "date_debut"))
+            d2 = parse_date_fr(val(row, "date_fin"))
+            key = (formation.lower(), d1 or "", d2 or "")
+            group = session_groups.setdefault(key, {
+                "nom": formation, "date_debut": d1, "date_fin": d2,
+                "apprenants": [], "total": 0.0,
+            })
+            if apprenant_id not in group["apprenants"]:
+                group["apprenants"].append(apprenant_id)
+                group["total"] += parse_amount(val(row, "prix"))
+
+    for group in session_groups.values():
+        query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}, "date_debut": group["date_debut"]}
+        existing = await db.sessions.find_one(query, {"_id": 0, "id": 1, "apprenants": 1})
+        if existing:
+            new_ids = [a for a in group["apprenants"] if a not in existing.get("apprenants", [])]
+            if new_ids:
+                await db.sessions.update_one(
+                    {"id": existing["id"]},
+                    {"$push": {"apprenants": {"$each": new_ids}}, "$set": {"updated_at": now_utc().isoformat()}},
+                )
+            stats["sessions_maj"] += 1
+        else:
+            if group["date_fin"] and group["date_fin"] < today_iso:
+                statut = "terminee"
+            elif group["date_debut"]:
+                statut = "planifiee"
+            else:
+                statut = "brouillon"
+            now_iso = now_utc().isoformat()
+            await db.sessions.insert_one({
+                **SessionPayload(
+                    nom=group["nom"],
+                    statut=statut,
+                    date_debut=group["date_debut"],
+                    date_fin=group["date_fin"],
+                    apprenants=group["apprenants"],
+                    prix_ht=round(group["total"], 2),
+                    financeur_id=financeur_cpf["id"] if financeur_cpf else None,
+                    description=import_note + ".",
+                ).model_dump(),
+                "id": new_id(),
+                "code_interne": f"SES-{now_utc().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "convocations_envoyees": False,
+                "evaluations_envoyees": False,
+                "factures_emises": False,
+                "attestations_emises": False,
+            })
+            stats["sessions_creees"] += 1
+
+    return stats
 
 
 # ---------------------------------------------------------------------------
