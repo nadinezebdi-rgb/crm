@@ -76,7 +76,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi icon={Kanban} label="Sessions actives" value={stats.sessions_actives} hint={`${stats.total_sessions} au total`} accent="blue" testid="kpi-sessions" />
         <Kpi icon={Users} label="Apprenants" value={stats.total_apprenants} hint="Dans le référentiel" accent="slate" testid="kpi-apprenants" />
-        <Kpi icon={CurrencyEur} label="CA réalisé" value={`${stats.ca.toLocaleString("fr-FR")} €`} hint={`Marge ${stats.taux_marge}%`} accent="emerald" testid="kpi-ca" />
+        <Kpi icon={CurrencyEur} label="CA réalisé" value={`${stats.ca.toLocaleString("fr-FR")} €`} hint={stats.ca_cpf > 0 ? `dont ${stats.ca_cpf.toLocaleString("fr-FR")} € CPF encaissés` : `Marge ${stats.taux_marge}%`} accent="emerald" testid="kpi-ca" />
         <Kpi icon={TrendUp} label="Progression moyenne" value={`${stats.avg_progression}%`} hint="Sessions actives" accent="amber" testid="kpi-progression" progress={stats.avg_progression} />
       </div>
 

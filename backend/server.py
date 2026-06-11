@@ -568,14 +568,23 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     total_formateurs = await db.formateurs.count_documents({})
     total_entreprises = await db.entreprises.count_documents({})
 
-    # Compute CA from active+terminated sessions
+    # Compute CA : encaissements CPF réels (factures EDOF) + sessions hors CPF
+    factures = await db.factures_cpf.find({}, {"_id": 0, "montant": 1, "statut_reglement": 1}).to_list(20000)
+    ca_cpf = sum(f.get("montant", 0) for f in factures if str(f.get("statut_reglement", "")).lower().startswith("vers"))
+    match = {"statut": {"$in": ["planifiee", "terminee"]}}
+    if ca_cpf > 0:
+        # Les sessions financées CPF sont déjà comptées via les factures (pas de double comptage)
+        cpf_financeur = await db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0, "id": 1})
+        if cpf_financeur:
+            match["financeur_id"] = {"$ne": cpf_financeur["id"]}
     pipeline = [
-        {"$match": {"statut": {"$in": ["planifiee", "terminee"]}}},
+        {"$match": match},
         {"$group": {"_id": None, "ca": {"$sum": "$prix_ht"}, "cout": {"$sum": "$cout_ht"}}},
     ]
     agg = await db.sessions.aggregate(pipeline).to_list(1)
-    ca = float(agg[0]["ca"]) if agg else 0.0
+    ca_sessions = float(agg[0]["ca"]) if agg else 0.0
     cout = float(agg[0]["cout"]) if agg else 0.0
+    ca = ca_sessions + ca_cpf
 
     # Sessions par statut (kanban counts)
     by_status = {}
@@ -597,8 +606,9 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         "total_formateurs": total_formateurs,
         "total_entreprises": total_entreprises,
         "ca": ca,
-        "marge": ca - cout,
-        "taux_marge": round((ca - cout) / ca * 100, 1) if ca > 0 else 0.0,
+        "ca_cpf": ca_cpf,
+        "marge": ca_sessions - cout,
+        "taux_marge": round((ca_sessions - cout) / ca_sessions * 100, 1) if ca_sessions > 0 else 0.0,
         "by_status": by_status,
         "avg_progression": avg_progression,
     }
@@ -1218,9 +1228,31 @@ async def classer_document_session(session_id: str, doc_type: str, user: dict = 
     return {"classes": len(apprenant_ids), "categorie": categorie, "nom_fichier": nom_fichier}
 
 
-    return await get_organisme()
+# ---------------------------------------------------------------------------
+# Purge des données de démonstration (seed)
+# ---------------------------------------------------------------------------
+DEMO_SESSION_CODES = ["SES-2026-AGILE-01", "SES-2026-CYBER-02", "SES-2026-BILAN-03", "SES-2026-MGT-04"]
+DEMO_APPRENANT_EMAILS = ["j.petit@acme.fr", "e.rousseau@acme.fr", "l.bertrand@solaris.fr", "m.faure@solaris.fr", "h.robin@nordique.fr"]
+DEMO_FORMATEUR_EMAILS = ["c.lefebvre@blade-academy.fr", "a.moreau@externe.fr", "i.garcia@blade-academy.fr"]
+DEMO_ENTREPRISE_SIRETS = ["12345678900012", "98765432100018", "45678912300026"]
+DEMO_FINANCEUR_NOMS = ["OPCO Atlas", "OPCO EP"]  # le financeur CPF est conservé (utilisé par l'import EDOF)
+DEMO_LIEU_NOMS = ["Centre Blade Academy Paris", "Espace Lyon Confluence", "Distanciel - Zoom"]
 
 
+@api.post("/parametres/purge-demo")
+async def purge_demo(user: dict = Depends(get_current_user)):
+    """Supprime les données de démonstration insérées au premier démarrage."""
+    res = {
+        "sessions": (await db.sessions.delete_many({"code_interne": {"$in": DEMO_SESSION_CODES}})).deleted_count,
+        "apprenants": (await db.apprenants.delete_many({"email": {"$in": DEMO_APPRENANT_EMAILS}})).deleted_count,
+        "formateurs": (await db.formateurs.delete_many({"email": {"$in": DEMO_FORMATEUR_EMAILS}})).deleted_count,
+        "entreprises": (await db.entreprises.delete_many({"siret": {"$in": DEMO_ENTREPRISE_SIRETS}})).deleted_count,
+        "financeurs": (await db.financeurs.delete_many({"nom": {"$in": DEMO_FINANCEUR_NOMS}})).deleted_count,
+        "lieux": (await db.lieux.delete_many({"nom": {"$in": DEMO_LIEU_NOMS}})).deleted_count,
+    }
+    # Empêche le seed de réinsérer les données de démo au prochain démarrage
+    await db.meta.update_one({"key": "demo_purged"}, {"$set": {"key": "demo_purged", "at": now_utc().isoformat()}}, upsert=True)
+    return res
 
 
 # ---------------------------------------------------------------------------
@@ -1268,7 +1300,9 @@ async def seed():
     elif not verify_password(admin_password, existing.get("password_hash", "")):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
-    # Demo entities (only if empty)
+    # Demo entities (only if empty — et jamais si l'utilisateur a purgé la démo)
+    if await db.meta.find_one({"key": "demo_purged"}):
+        return
     if await db.entreprises.count_documents({}) == 0:
         entreprises = [
             {"id": new_id(), "raison_sociale": "Acme Industries", "siret": "12345678900012", "ville": "Paris", "email": "contact@acme.fr", "contact_nom": "Sophie Bernard", "created_at": now_utc().isoformat()},

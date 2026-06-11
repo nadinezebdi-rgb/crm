@@ -122,6 +122,13 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - UI : bouton "Classer dans les fiches" (cyan, icône FolderSimplePlus, data-testid `classer-{type}`) sous "Générer le PDF" sur chacune des 8 cartes de l'onglet Gestion de SessionDetail. Toast "classé dans N fiche(s)".
 - Testé : classement convention → visible sur la fiche du stagiaire (catégorie convention) → téléchargement HTTP 200, PDF valide. UI vérifiée par screenshot. Docs de test nettoyés.
 
+## CA réel + purge des données de démo (v2.0 — 11 juin 2026)
+- Contexte : en production l'utilisateur a importé 531 apprenants + 237 factures CPF mais le dashboard montrait le CA des sessions de démo (6 900 €).
+- `GET /api/dashboard/stats` : CA réalisé = encaissements CPF réels (factures versées) + prix des sessions hors financement CPF (anti double-comptage via financeur type cpf). Nouveau champ `ca_cpf`. Marge calculée sur les sessions uniquement. KPI frontend : hint "dont X € CPF encaissés" quand ca_cpf > 0.
+- `POST /api/parametres/purge-demo` : supprime les données seed (4 sessions, 5 apprenants, 3 formateurs, 3 entreprises, 2 financeurs OPCO, 3 lieux — le financeur CPF est conservé car utilisé par l'import EDOF). Pose un drapeau `meta.demo_purged` que `seed()` respecte (pas de réinsertion au redémarrage/redéploiement). Bouton rouge "Supprimer les données de démonstration" dans Paramètres > Qualité des données (data-testid purge-demo-btn).
+- Testé : avant purge CA 896 380 (6 900 démo + 889 480 CPF) → après purge CA 889 480, 0 démo, pas de réinsertion après restart, login admin intact. ⚠️ La base PREVIEW est maintenant purgée de la démo (vide hors factures CPF) — état attendu.
+- Action utilisateur en production : redéployer PUIS cliquer "Supprimer les données de démonstration".
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`

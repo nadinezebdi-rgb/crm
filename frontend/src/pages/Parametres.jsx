@@ -18,6 +18,7 @@ import {
   CheckCircle,
   Warning,
   ArrowsMerge,
+  Trash,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
@@ -145,6 +146,18 @@ function QualiteDonnees() {
     }
   };
 
+  const purgerDemo = async () => {
+    if (!window.confirm("Supprimer définitivement toutes les données de DÉMONSTRATION (sessions, apprenants, formateurs, entreprises, financeurs OPCO et lieux d'exemple) ? Vos vraies données importées ne seront pas touchées.")) return;
+    try {
+      const { data } = await api.post("/parametres/purge-demo");
+      const total = Object.values(data).reduce((a, b) => a + b, 0);
+      toast.success(`Données de démo supprimées : ${total} élément(s) (${data.sessions} sessions, ${data.apprenants} apprenants, ${data.formateurs} formateurs, ${data.entreprises} entreprises, ${data.financeurs} financeurs, ${data.lieux} lieux)`);
+      if (res) analyser();
+    } catch {
+      toast.error("Purge impossible");
+    }
+  };
+
   const nbProblemes = res
     ? res.apprenants_par_email.length + res.apprenants_par_nom.length + res.factures_par_numero.length
     : 0;
@@ -157,6 +170,15 @@ function QualiteDonnees() {
       <Button onClick={analyser} disabled={loading} data-testid="doublons-analyse-btn" className="bg-brand-600 hover:bg-brand-700">
         <Detective size={16} className="mr-1.5" /> {loading ? "Analyse…" : "Analyser les doublons"}
       </Button>
+
+      <div className="pt-3 mt-3 border-t border-slate-100">
+        <p className="text-xs text-slate-500 mb-2">
+          Le CRM a été livré avec des données d'exemple (sessions « Scrum Master », « Cybersécurité »…, apprenants et entreprises fictifs). Une fois vos vraies données importées, supprimez-les pour des statistiques exactes.
+        </p>
+        <Button onClick={purgerDemo} variant="outline" data-testid="purge-demo-btn" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+          <Trash size={16} className="mr-1.5" /> Supprimer les données de démonstration
+        </Button>
+      </div>
 
       {res && (
         <div className="space-y-3" data-testid="doublons-result">
