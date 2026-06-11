@@ -265,3 +265,117 @@ async def factures_cpf_stats(user: dict = Depends(get_current_user)):
         "total_attente": round(total - verse, 2),
         "par_mois": [{"mois": m, **{k: round(v, 2) for k, v in d.items()}} for m, d in sorted(par_mois.items())],
     }
+
+
+# ----- Génération de sessions par mois depuis les factures CPF -----
+import calendar
+
+
+@router.post("/sessions/generer-depuis-factures-cpf")
+async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_user)):
+    """Regroupe les factures CPF par mois (date_emission) et crée une session synthétique par mois.
+
+    - Une session "CPF — juillet 2025" par mois avec apprenants liés via dossier_cpf, montant total versé,
+      financeur CPF (find-or-create). Idempotent : ré-exécution = sessions_maj sans doublon.
+    """
+    factures = await db.factures_cpf.find(
+        {"date_emission": {"$ne": None}},
+        {"_id": 0, "numero_dossier": 1, "numero_facture": 1, "montant": 1, "date_emission": 1, "statut_reglement": 1},
+    ).to_list(20000)
+    if not factures:
+        raise HTTPException(status_code=400, detail="Aucune facture CPF avec date d'émission disponible")
+
+    # Mapping dossier_cpf → apprenant_id pour relier les apprenants existants
+    dossier_to_apprenant: Dict[str, str] = {}
+    async for a in db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "dossier_cpf": 1}):
+        dossier_to_apprenant[a["dossier_cpf"]] = a["id"]
+
+    # Financeur CPF find-or-create
+    financeur_cpf = await db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
+    if not financeur_cpf:
+        financeur_cpf = {
+            "id": new_id(),
+            "nom": "Caisse des Dépôts — Mon Compte Formation",
+            "type_financeur": "cpf", "code": "CPF",
+            "email": None, "telephone": None, "adresse": None,
+            "notes": "Créé automatiquement lors de la génération de sessions CPF.",
+            "created_at": now_utc().isoformat(), "updated_at": now_utc().isoformat(),
+        }
+        await db.financeurs.insert_one(dict(financeur_cpf))
+        financeur_cpf.pop("_id", None)
+
+    # Regroupement par mois (YYYY-MM)
+    groupes: Dict[str, dict] = {}
+    for f in factures:
+        mois = (f.get("date_emission") or "")[:7]
+        if not mois or len(mois) != 7:
+            continue
+        g = groupes.setdefault(mois, {"montant_total": 0.0, "montant_verse": 0.0, "nb_factures": 0, "apprenant_ids": set(), "factures_numeros": []})
+        g["montant_total"] += float(f.get("montant") or 0)
+        if str(f.get("statut_reglement", "")).lower().startswith("vers"):
+            g["montant_verse"] += float(f.get("montant") or 0)
+        g["nb_factures"] += 1
+        if f.get("numero_facture"):
+            g["factures_numeros"].append(f["numero_facture"])
+        dossier = f.get("numero_dossier")
+        if dossier and dossier in dossier_to_apprenant:
+            g["apprenant_ids"].add(dossier_to_apprenant[dossier])
+
+    today_iso = now_utc().date().isoformat()
+    stats = {"sessions_creees": 0, "sessions_maj": 0, "details": []}
+
+    for mois, g in sorted(groupes.items()):
+        annee, num_mois = mois.split("-")
+        num_mois_int = int(num_mois)
+        nom_session = f"CPF — {MOIS_FR[num_mois_int - 1]} {annee}"
+        last_day = calendar.monthrange(int(annee), num_mois_int)[1]
+        date_debut = f"{annee}-{num_mois}-01"
+        date_fin = f"{annee}-{num_mois}-{last_day:02d}"
+        apprenants_list = sorted(g["apprenant_ids"])
+        montant = round(g["montant_total"], 2)
+        description = (
+            f"Session générée automatiquement depuis les factures CPF du mois "
+            f"({g['nb_factures']} facture(s), {round(g['montant_verse'], 2)} € versé / {montant} € émis)."
+        )
+
+        existing = await db.sessions.find_one({"nom": nom_session}, {"_id": 0, "id": 1})
+        if existing:
+            await db.sessions.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "apprenants": apprenants_list,
+                    "prix_ht": montant,
+                    "date_debut": date_debut, "date_fin": date_fin,
+                    "description": description,
+                    "financeur_id": financeur_cpf["id"],
+                    "updated_at": now_utc().isoformat(),
+                }},
+            )
+            stats["sessions_maj"] += 1
+        else:
+            statut = "terminee" if date_fin < today_iso else ("planifiee" if date_debut <= today_iso else "planifiee")
+            now_iso = now_utc().isoformat()
+            await db.sessions.insert_one({
+                **SessionPayload(
+                    nom=nom_session, statut=statut,
+                    date_debut=date_debut, date_fin=date_fin,
+                    apprenants=apprenants_list,
+                    prix_ht=montant,
+                    financeur_id=financeur_cpf["id"],
+                    description=description,
+                    categorie="CPF",
+                ).model_dump(),
+                "id": new_id(),
+                "code_interne": f"CPF-{annee}-{num_mois}",
+                "created_at": now_iso, "updated_at": now_iso,
+                "convocations_envoyees": False, "evaluations_envoyees": False,
+                "factures_emises": True, "attestations_emises": False,
+            })
+            stats["sessions_creees"] += 1
+        stats["details"].append({
+            "mois": mois, "nom": nom_session, "montant": montant,
+            "montant_verse": round(g["montant_verse"], 2),
+            "nb_factures": g["nb_factures"], "nb_apprenants": len(apprenants_list),
+        })
+
+    return stats

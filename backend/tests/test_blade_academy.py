@@ -393,3 +393,106 @@ class TestCpfReImport:
         assert r.status_code == 200, r.text
         stats = r.json()
         assert stats.get("mises_a_jour", 0) >= 1 or stats.get("importees", 0) >= 0, stats
+
+
+
+# --------------------------- NEW FEATURE: generer-sessions-depuis-factures-cpf ---------------------------
+EXPECTED_MONTHS = {"2025-01", "2025-03", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12"}
+EXPECTED_TOTAL = 889480.0
+
+
+class TestGenererSessionsDepuisFacturesCPF:
+    def test_endpoint_exists_and_creates_or_updates_sessions(self, admin_session):
+        r = admin_session.post(f"{API}/sessions/generer-depuis-factures-cpf", timeout=60)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert "sessions_creees" in data and "sessions_maj" in data and "details" in data
+        # Either fresh creation or idempotent update — total of (creees + maj) must equal 8
+        assert data["sessions_creees"] + data["sessions_maj"] == 8, data
+        # Verify details for the 8 expected months
+        moiss = {d["mois"] for d in data["details"]}
+        assert moiss == EXPECTED_MONTHS, moiss
+        total = round(sum(d["montant"] for d in data["details"]), 2)
+        assert total == EXPECTED_TOTAL, total
+
+    def test_idempotent_second_run(self, admin_session):
+        # After first call above, this run must produce sessions_creees=0, sessions_maj=8
+        r = admin_session.post(f"{API}/sessions/generer-depuis-factures-cpf", timeout=60)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["sessions_creees"] == 0, data
+        assert data["sessions_maj"] == 8, data
+
+    def test_sessions_persisted_with_correct_attributes(self, admin_session):
+        r = admin_session.get(f"{API}/sessions", timeout=30)
+        assert r.status_code == 200
+        sessions = r.json()
+        cpf_sessions = [s for s in sessions if (s.get("code_interne") or "").startswith("CPF-")]
+        assert len(cpf_sessions) == 8, f"Expected 8 CPF sessions, got {len(cpf_sessions)}"
+
+        import calendar as _cal
+        for s in cpf_sessions:
+            code = s["code_interne"]  # CPF-YYYY-MM
+            assert code.startswith("CPF-2025-"), code
+            _, annee, mm = code.split("-")
+            assert s["date_debut"] == f"{annee}-{mm}-01", s
+            last = _cal.monthrange(int(annee), int(mm))[1]
+            assert s["date_fin"] == f"{annee}-{mm}-{last:02d}", s
+            assert s["statut"] == "terminee", s
+            assert s.get("financeur_id"), f"Missing financeur_id on {code}"
+
+        # Total prix_ht across 8 CPF sessions
+        total = round(sum(s.get("prix_ht") or 0 for s in cpf_sessions), 2)
+        assert total == EXPECTED_TOTAL, total
+
+    def test_financeur_id_is_cpf(self, admin_session):
+        r = admin_session.get(f"{API}/financeurs", timeout=30)
+        assert r.status_code == 200
+        cpf = next((f for f in r.json() if (f.get("type_financeur") or "").lower() == "cpf"), None)
+        assert cpf, "No CPF financeur found"
+        cpf_id = cpf["id"]
+
+        sessions = admin_session.get(f"{API}/sessions", timeout=30).json()
+        cpf_sessions = [s for s in sessions if (s.get("code_interne") or "").startswith("CPF-")]
+        for s in cpf_sessions:
+            assert s.get("financeur_id") == cpf_id, s
+
+    def test_apprenant_linkage_via_dossier_cpf(self, admin_session):
+        # 1) Pick a real facture with a numero_dossier in a known month (e.g. 2025-07)
+        factures = admin_session.get(f"{API}/factures-cpf", timeout=30).json()
+        target = next(
+            (f for f in factures if f.get("numero_dossier") and (f.get("date_emission") or "").startswith("2025-07")),
+            None,
+        )
+        assert target, "No facture in 2025-07 to test apprenant linkage"
+        dossier = target["numero_dossier"]
+        mois = target["date_emission"][:7]
+
+        # 2) Create a TEST_ apprenant with that dossier_cpf
+        payload = {
+            "nom": "TEST_Linkage", "prenom": "TEST_Linkage",
+            "email": f"test_linkage_{uuid.uuid4().hex[:6]}@example.com",
+            "dossier_cpf": dossier,
+        }
+        created = admin_session.post(f"{API}/apprenants", json=payload, timeout=30)
+        assert created.status_code == 200, created.text
+        apprenant_id = created.json()["id"]
+
+        try:
+            # 3) Regenerate sessions
+            r = admin_session.post(f"{API}/sessions/generer-depuis-factures-cpf", timeout=60)
+            assert r.status_code == 200, r.text
+            # 4) Verify apprenant_id is in the target month's session
+            annee, mm = mois.split("-")
+            target_code = f"CPF-{annee}-{mm}"
+            sessions = admin_session.get(f"{API}/sessions", timeout=30).json()
+            target_session = next((s for s in sessions if s.get("code_interne") == target_code), None)
+            assert target_session, f"Session {target_code} not found"
+            assert apprenant_id in (target_session.get("apprenants") or []), (
+                f"Apprenant {apprenant_id} not linked to {target_code}: {target_session.get('apprenants')}"
+            )
+        finally:
+            # Cleanup test apprenant
+            admin_session.delete(f"{API}/apprenants/{apprenant_id}", timeout=30)
+            # Regenerate one more time so the dangling apprenant_id is removed from the session
+            admin_session.post(f"{API}/sessions/generer-depuis-factures-cpf", timeout=60)

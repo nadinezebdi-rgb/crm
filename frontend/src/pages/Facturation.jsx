@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UploadSimple, MagnifyingGlass, Receipt } from "@phosphor-icons/react";
+import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus } from "@phosphor-icons/react";
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import Pagination from "@/components/Pagination";
 
@@ -27,6 +27,7 @@ export default function Facturation() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const fileRef = useRef(null);
@@ -72,6 +73,31 @@ export default function Facturation() {
 
   const chartData = (stats?.par_mois || []).map((m) => ({ name: moisLabel(m.mois), versé: m.verse, facturé: m.total }));
 
+  const generateMonthlySessions = async () => {
+    if (!stats?.nb_factures) {
+      toast.error("Aucune facture CPF à analyser");
+      return;
+    }
+    const nbMois = (stats.par_mois || []).length;
+    if (!window.confirm(
+      `Cela va créer ou mettre à jour ${nbMois} session(s) — une par mois — à partir de vos ${stats.nb_factures} facture(s) CPF.\n\n` +
+      `Les sessions seront nommées « CPF — mois année », rattachées au financeur CPF, avec leurs stagiaires liés (via le n° de dossier).\n\n` +
+      `L'opération est idempotente : relancer mettra simplement à jour les sessions existantes.`
+    )) return;
+    setGenerating(true);
+    try {
+      const { data } = await api.post("/sessions/generer-depuis-factures-cpf");
+      toast.success(
+        `${data.sessions_creees} session(s) créée(s), ${data.sessions_maj} mise(s) à jour. ` +
+        `Consultez la page Sessions pour les retrouver.`
+      );
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Génération impossible");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <div className="p-6 lg:p-8" data-testid="facturation-page">
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
@@ -91,6 +117,16 @@ export default function Facturation() {
               data-testid="factures-search"
             />
           </div>
+          <Button
+            onClick={generateMonthlySessions}
+            disabled={generating || !stats?.nb_factures}
+            data-testid="factures-generer-sessions-btn"
+            variant="outline"
+            className="border-brand-200 text-brand-700 hover:bg-brand-50"
+            title="Crée une session par mois à partir des factures CPF importées"
+          >
+            <CalendarPlus size={16} className="mr-1.5" /> {generating ? "Génération…" : "Générer sessions par mois"}
+          </Button>
           <Button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
