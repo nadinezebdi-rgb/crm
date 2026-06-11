@@ -151,6 +151,13 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - ZERO changement de comportement métier. Tous les endpoints identiques. Testing_agent : 31/31 backend, 100% frontend, aucune régression.
 - Bénéfice : chaque module < 270 lignes, séparation domaine claire, hot-reload plus rapide, code prêt pour scaling.
 
+## Sessions auto-générées depuis Factures CPF (v2.3 — 11 juin 2026)
+- Demande utilisateur : « generer sessions par mois depuis les factures ».
+- Nouveau endpoint `POST /api/sessions/generer-depuis-factures-cpf` (`/app/backend/routes/imports.py`) : regroupe TOUTES les factures CPF par mois (YYYY-MM de `date_emission`) et crée/met à jour une session synthétique par mois. Nom auto « CPF — &lt;mois&gt; &lt;année&gt; », code interne `CPF-YYYY-MM`, statut auto (terminee si mois passé), `date_debut`=01 / `date_fin`=dernier jour (calendar.monthrange → gère février bissextile), `prix_ht`=somme des montants du mois, `financeur_id` rattaché au CPF (find-or-create), `apprenants`=ids des apprenants dont `dossier_cpf` matche un n° de dossier de la facture (mapping idempotent).
+- Idempotent : find-or-update sur `session.nom` → ré-exécution = sessions_maj sans doublon.
+- Frontend : bouton « Générer sessions par mois » (data-testid `factures-generer-sessions-btn`) sur la page Facturation, à côté de l'import. Confirmation native + toast résultat.
+- Testé sur 237 factures preview → 8 sessions générées (jan/mars/jul/aoû/sep/oct/nov/déc 2025) pour un total exact de 889 480 €. 36/36 pytest (incl. 5 nouveaux tests `TestGenererSessionsDepuisFacturesCPF`).
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
