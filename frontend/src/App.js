@@ -13,6 +13,7 @@ import Sessions from "@/pages/Sessions";
 import SessionDetail from "@/pages/SessionDetail";
 import SessionCreate from "@/pages/SessionCreate";
 import Facturation from "@/pages/Facturation";
+import ApprenantDetail from "@/pages/ApprenantDetail";
 import Apprenants from "@/pages/Apprenants";
 import Formateurs from "@/pages/Formateurs";
 import Entreprises from "@/pages/Entreprises";
@@ -93,6 +94,7 @@ function AppRouter() {
         <Route path="sessions/:id" element={<SessionDetail />} />
         <Route path="facturation" element={<Facturation />} />
         <Route path="apprenants" element={<Apprenants />} />
+        <Route path="apprenants/:id" element={<ApprenantDetail />} />
         <Route path="formateurs" element={<Formateurs />} />
         <Route path="entreprises" element={<Entreprises />} />
         <Route path="financeurs" element={<Financeurs />} />

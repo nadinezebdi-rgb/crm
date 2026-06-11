@@ -9,6 +9,7 @@ export default function Apprenants() {
       subtitle="Vos stagiaires et bénéficiaires de formation."
       endpoint="apprenants"
       testid="apprenants-page"
+      rowHref={(it) => `/apprenants/${it.id}`}
       extraActions={(reload) => <ImportEdofDialog onDone={reload} />}
       columns={[
         { key: "prenom", label: "Prénom" },

@@ -22,13 +22,14 @@ from typing import List, Optional, Literal, Dict, Any
 import bcrypt
 import jwt
 import httpx
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, File, UploadFile
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from documents import build_pdf, DOC_BUILDERS
+from storage import APP_PREFIX, put_object, get_object
 from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns
 
 # ---------------------------------------------------------------------------
@@ -938,6 +939,141 @@ async def factures_cpf_stats(user: dict = Depends(get_current_user)):
         "total_verse": round(verse, 2),
         "total_attente": round(total - verse, 2),
         "par_mois": [{"mois": m, **{k: round(v, 2) for k, v in d.items()}} for m, d in sorted(par_mois.items())],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Documents des apprenants (stockage de fichiers persistant)
+# ---------------------------------------------------------------------------
+CATEGORIES_DOCUMENTS_APPRENANT = {
+    "certificat", "convocation_certification", "facture", "attestation_assiduite",
+    "releve_connexion", "contrat", "emargement", "dpc", "convention", "communications", "autre",
+}
+
+
+@api.get("/apprenants/{apprenant_id}/documents")
+async def list_documents_apprenant(apprenant_id: str, user: dict = Depends(get_current_user)):
+    return await db.apprenant_documents.find(
+        {"apprenant_id": apprenant_id, "is_deleted": False}, {"_id": 0}
+    ).sort("uploaded_at", -1).to_list(500)
+
+
+@api.post("/apprenants/{apprenant_id}/documents")
+async def upload_document_apprenant(
+    apprenant_id: str,
+    categorie: str = Form(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if categorie not in CATEGORIES_DOCUMENTS_APPRENANT:
+        raise HTTPException(status_code=400, detail="Catégorie de document invalide")
+    if not await db.apprenants.find_one({"id": apprenant_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Apprenant introuvable")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10 Mo)")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fichier vide")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "bin"
+    path = f"{APP_PREFIX}/apprenants/{apprenant_id}/{uuid.uuid4().hex}.{ext}"
+    try:
+        result = await put_object(path, data, file.content_type or "application/octet-stream")
+    except Exception:
+        logger.exception("Échec de l'envoi vers le stockage d'objets")
+        raise HTTPException(status_code=502, detail="Stockage indisponible, réessayez dans un instant")
+    doc = {
+        "id": new_id(),
+        "apprenant_id": apprenant_id,
+        "categorie": categorie,
+        "nom_fichier": file.filename or "document",
+        "content_type": file.content_type or "application/octet-stream",
+        "taille": result.get("size", len(data)),
+        "storage_path": result["path"],
+        "is_deleted": False,
+        "uploaded_at": now_utc().isoformat(),
+    }
+    await db.apprenant_documents.insert_one(dict(doc))
+    return doc
+
+
+@api.get("/documents-apprenants/{doc_id}/download")
+async def download_document_apprenant(doc_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.apprenant_documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    try:
+        data, content_type = await get_object(doc["storage_path"])
+    except Exception:
+        logger.exception("Échec de la lecture du stockage d'objets")
+        raise HTTPException(status_code=502, detail="Stockage indisponible, réessayez dans un instant")
+    return Response(
+        content=data,
+        media_type=doc.get("content_type") or content_type,
+        headers={"Content-Disposition": f'inline; filename="{doc["nom_fichier"]}"'},
+    )
+
+
+@api.delete("/documents-apprenants/{doc_id}")
+async def delete_document_apprenant(doc_id: str, user: dict = Depends(get_current_user)):
+    result = await db.apprenant_documents.update_one({"id": doc_id}, {"$set": {"is_deleted": True}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Fusion de fiches apprenants en double
+# ---------------------------------------------------------------------------
+class FusionPayload(BaseModel):
+    apprenant_ids: List[str]
+
+
+@api.post("/apprenants/fusionner")
+async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(get_current_user)):
+    if len(payload.apprenant_ids) < 2:
+        raise HTTPException(status_code=400, detail="Au moins deux fiches sont nécessaires pour fusionner")
+    fiches = await db.apprenants.find({"id": {"$in": payload.apprenant_ids}}, {"_id": 0}).to_list(100)
+    if len(fiches) < 2:
+        raise HTTPException(status_code=404, detail="Fiches introuvables")
+    # La fiche conservée = la plus ancienne ; elle est enrichie avec les champs manquants
+    fiches.sort(key=lambda f: f.get("created_at") or "")
+    cible, doublons = fiches[0], fiches[1:]
+    doublon_ids = [d["id"] for d in doublons]
+
+    updates = {"updated_at": now_utc().isoformat()}
+    for field in ["email", "telephone", "dossier_cpf", "adresse", "date_naissance", "entreprise_id"]:
+        if not cible.get(field):
+            for d in doublons:
+                if d.get(field):
+                    updates[field] = d[field]
+                    break
+    notes_sup = [d["notes"] for d in doublons if d.get("notes") and d["notes"] != cible.get("notes")]
+    if notes_sup:
+        updates["notes"] = "\n".join([n for n in [cible.get("notes")] + notes_sup if n])
+    await db.apprenants.update_one({"id": cible["id"]}, {"$set": updates})
+
+    # Réaffecter les sessions
+    sessions_touchees = 0
+    async for s in db.sessions.find({"apprenants": {"$in": doublon_ids}}, {"_id": 0, "id": 1, "apprenants": 1}):
+        nouveaux = [a for a in s.get("apprenants", []) if a not in doublon_ids]
+        if cible["id"] not in nouveaux:
+            nouveaux.append(cible["id"])
+        await db.sessions.update_one(
+            {"id": s["id"]}, {"$set": {"apprenants": nouveaux, "updated_at": now_utc().isoformat()}}
+        )
+        sessions_touchees += 1
+
+    # Réaffecter les documents puis supprimer les doublons
+    docs_result = await db.apprenant_documents.update_many(
+        {"apprenant_id": {"$in": doublon_ids}}, {"$set": {"apprenant_id": cible["id"]}}
+    )
+    await db.apprenants.delete_many({"id": {"$in": doublon_ids}})
+
+    return {
+        "cible_id": cible["id"],
+        "fiches_fusionnees": len(doublon_ids),
+        "sessions_reaffectees": sessions_touchees,
+        "documents_reaffectes": docs_result.modified_count,
     }
 
 

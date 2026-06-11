@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,8 @@ import Pagination from "@/components/Pagination";
  * Props:
  *  - title, subtitle, endpoint, columns, fields, blank, badges?
  */
-export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid, extraActions }) {
+export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid, extraActions, rowHref }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -174,7 +176,13 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
         ) : items.length === 0 ? (
           <div className="p-12 text-center text-sm text-slate-500">Aucun élément. Cliquez sur « Nouveau » pour commencer.</div>
         ) : items.slice((page - 1) * pageSize, page * pageSize).map((it) => (
-          <div key={it.id} className="grid items-center px-5 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors text-sm" style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr) 80px` }} data-testid={`${testid}-row-${it.id}`}>
+          <div
+            key={it.id}
+            className={`grid items-center px-5 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors text-sm ${rowHref ? "cursor-pointer" : ""}`}
+            style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr) 80px` }}
+            onClick={() => rowHref && navigate(rowHref(it))}
+            data-testid={`${testid}-row-${it.id}`}
+          >
             {columns.map((c) => (
               <div key={c.key} className="truncate pr-2 text-slate-700">
                 {c.render ? c.render(it) : (it[c.key] ?? "—")}
@@ -182,10 +190,10 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
               </div>
             ))}
             <div className="flex items-center justify-end gap-1">
-              <button onClick={() => startEdit(it)} className="h-7 w-7 rounded hover:bg-slate-100 text-slate-500 flex items-center justify-center" data-testid={`${testid}-edit-${it.id}`}>
+              <button onClick={(e) => { e.stopPropagation(); startEdit(it); }} className="h-7 w-7 rounded hover:bg-slate-100 text-slate-500 flex items-center justify-center" data-testid={`${testid}-edit-${it.id}`}>
                 <PencilSimple size={14} />
               </button>
-              <button onClick={() => remove(it)} className="h-7 w-7 rounded hover:bg-red-50 text-red-600 flex items-center justify-center" data-testid={`${testid}-delete-${it.id}`}>
+              <button onClick={(e) => { e.stopPropagation(); remove(it); }} className="h-7 w-7 rounded hover:bg-red-50 text-red-600 flex items-center justify-center" data-testid={`${testid}-delete-${it.id}`}>
                 <Trash size={14} />
               </button>
             </div>

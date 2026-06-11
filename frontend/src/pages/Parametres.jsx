@@ -17,6 +17,7 @@ import {
   Detective,
   CheckCircle,
   Warning,
+  ArrowsMerge,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
@@ -115,6 +116,7 @@ function OrganismeIdentite() {
 function QualiteDonnees() {
   const [res, setRes] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fusing, setFusing] = useState(null);
 
   const analyser = async () => {
     setLoading(true);
@@ -125,6 +127,21 @@ function QualiteDonnees() {
       toast.error("Analyse impossible");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fusionner = async (groupe) => {
+    const ids = groupe.apprenants.map((a) => a.id);
+    if (!window.confirm(`Fusionner ces ${ids.length} fiches en une seule ? Les sessions, documents et n° de dossier CPF seront conservés sur la fiche la plus ancienne.`)) return;
+    setFusing(groupe.cle);
+    try {
+      const { data } = await api.post("/apprenants/fusionner", { apprenant_ids: ids });
+      toast.success(`Fusion réussie : ${data.fiches_fusionnees} fiche(s) fusionnée(s), ${data.sessions_reaffectees} session(s) et ${data.documents_reaffectes} document(s) réaffectés`);
+      analyser();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Fusion impossible");
+    } finally {
+      setFusing(null);
     }
   };
 
@@ -155,14 +172,34 @@ function QualiteDonnees() {
               {res.apprenants_par_email.length > 0 && (
                 <DoublonBloc titre={`Apprenants avec le même email (${res.apprenants_par_email.length})`}>
                   {res.apprenants_par_email.map((g) => (
-                    <li key={g.cle}><span className="font-medium">{g.cle}</span> — {g.apprenants.map((a) => `${a.prenom} ${a.nom}`).join(", ")} ({g.apprenants.length} fiches)</li>
+                    <li key={g.cle} className="flex items-center justify-between gap-2">
+                      <span><span className="font-medium">{g.cle}</span> — {g.apprenants.map((a) => `${a.prenom} ${a.nom}`).join(", ")} ({g.apprenants.length} fiches)</span>
+                      <button
+                        onClick={() => fusionner(g)}
+                        disabled={fusing === g.cle}
+                        className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
+                        data-testid={`fusion-btn-${g.cle}`}
+                      >
+                        <ArrowsMerge size={12} /> {fusing === g.cle ? "Fusion…" : "Fusionner"}
+                      </button>
+                    </li>
                   ))}
                 </DoublonBloc>
               )}
               {res.apprenants_par_nom.length > 0 && (
                 <DoublonBloc titre={`Apprenants avec le même nom + prénom (${res.apprenants_par_nom.length})`}>
                   {res.apprenants_par_nom.map((g) => (
-                    <li key={g.cle}><span className="font-medium">{g.cle}</span> — {g.apprenants.length} fiches (emails : {g.apprenants.map((a) => a.email || "aucun").join(" / ")})</li>
+                    <li key={g.cle} className="flex items-center justify-between gap-2">
+                      <span><span className="font-medium">{g.cle}</span> — {g.apprenants.length} fiches (emails : {g.apprenants.map((a) => a.email || "aucun").join(" / ")})</span>
+                      <button
+                        onClick={() => fusionner(g)}
+                        disabled={fusing === g.cle}
+                        className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
+                        data-testid={`fusion-nom-btn-${g.cle}`}
+                      >
+                        <ArrowsMerge size={12} /> {fusing === g.cle ? "Fusion…" : "Fusionner"}
+                      </button>
+                    </li>
                   ))}
                 </DoublonBloc>
               )}
