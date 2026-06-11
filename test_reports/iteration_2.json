@@ -1,0 +1,44 @@
+{
+  "summary": "End-to-end regression on Blade Academy (ex-FormaPro) after rebrand + new EDOF 'groupement' feature. Backend: 31/31 pytest pass (auth, CRUD x5, sessions+status, dashboard incl. ca_cpf, factures-cpf list/stats/re-import idempotent, EDOF preview, EDOF commit groupement='mois' -> 2 sessions, groupement='exact' -> 4 sessions, 8 PDF doc types, classer + apprenant documents, upload+soft-delete, fusion apprenants, qualité doublons, parametres organisme GET/PUT, purge-demo idempotent). Frontend: login -> dashboard (KPI 'dont 889 480 € CPF encaissés' visible), /sessions Kanban + view-list-btn + search, /apprenants with 'Importer EDOF (CPF)' button + ImportEdofDialog (dropzone -> mapping step -> groupement radios with data-testid edof-groupement-mois & edof-groupement-exact -> commit), /facturation showing 20-row paginated table with total 889 480 €, /parametres with Qualité/doublons/purge-demo, SessionDetail Gestion tab with 8 doc cards (convention, contrat, convocation, attestation, facture, émargement, programme, évaluation), each with 'Générer le PDF' + 'Classer dans les fiches' buttons. DB clean state restored after tests (0 leftover sessions/apprenants).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS", "issue": "CORS_ORIGINS='*' + httpOnly credential cookies is contradictory per spec; FastAPI mitigates by echoing origin but production should pin to explicit origins (REACT_APP_BACKEND_URL)."},
+      {"endpoint": "/api/auth/logout", "issue": "JWT not blacklisted server-side; cookies are cleared but token remains valid until exp (8h). MVP-acceptable."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard 'Sessions par statut' chart", "issues": ["Recharts ResponsiveContainer logs 'width(-1) and height(-1)' warning on first render (carry-over from iteration_1; chart still renders correctly). Add explicit minHeight to silence."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_blade_academy.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: pin CORS_ORIGINS to explicit REACT_APP_BACKEND_URL instead of '*' (credentials + wildcard is spec-violating).",
+    "Optional: add minHeight to Dashboard recharts ResponsiveContainer wrapper to silence width=-1 warning.",
+    "Optional: consider JWT blacklist or shorter access-token TTL + refresh rotation for production hardening."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1480 lines — split into routers (auth, crud_factory, sessions, dashboard, edof_import, factures_cpf, documents, fusion, parametres) to keep <700 lines per module as suggested in iteration_1.",
+    "EDOF commit (server.py:723-879) duplicates apprenant find-or-create logic that could be extracted; financeur_cpf find-or-create is similar.",
+    "PDF generation is synchronous (ReportLab) inside async handlers — wrap in run_in_executor when scaling.",
+    "Generic CRUD factory PUT writes full payload.model_dump() without preserving server-managed timestamps (id is matcher so safe).",
+    "Idempotency of EDOF commit: when groupement='mois', re-running with same data results in sessions_maj=2 (no duplicate created) — confirmed working.",
+    "fusion endpoint expects 'apprenant_ids' (snake_case) — fine, but doc test_credentials.md could mention it for consistency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_blade_academy.py (rewritten/replaced old test_formapro.py — covers all new features: EDOF groupement, classer, fusion, factures-cpf, qualité, parametres)"
+  ],
+  "success_rate": {"backend": "100% (31/31)", "frontend": "100%"},
+  "test_credentials": "admin@blade-academy.fr / admin123 (matches /app/memory/test_credentials.md and seeded on startup).",
+  "seed_data_creation": "Tests create their own data with TEST_/DOSS- prefixes and delete after. Pre-existing 237 CPF factures (889 480 € total) in DB are preserved. Initial DB state: 0 sessions / 0 apprenants / 237 factures-cpf — restored after run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_blade_academy.py -v. Note: TestEdofGroupement may fail with sessions_creees=0 if a previous run left 'Formation Test EDOF — juillet/août 2025' sessions in DB — cleanup snippet: delete sessions with nom containing 'Formation Test EDOF' before re-running. Frontend data-testid hooks confirmed: login-submit, view-list-btn, edof-groupement-mois, edof-groupement-exact. The 'Planification' column on /sessions Kanban renders as 'En planification' in text — keep that in mind when grepping text.",
+  "rca of the issue": "N/A — no functional issues. Two test-side adjustments made during iteration: (1) classer response uses 'classes' key (not 'apprenants_concernes'); (2) fusion endpoint expects 'apprenant_ids' not 'ids'; (3) apprenant doc nom is 'nom_fichier' not 'nom'. Tests updated accordingly — backend behavior is correct."
+}
