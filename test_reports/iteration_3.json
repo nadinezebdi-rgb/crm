@@ -1,0 +1,39 @@
+{
+  "summary": "Régression post-refactoring (server.py monolithique -> deps.py + models.py + seed.py + 7 routers). Backend: 31/31 pytest pass (test_blade_academy.py) — aucun changement de comportement détecté. Tous les imports modulaires fonctionnent (auth/crud/sessions/dashboard/parametres/imports/documents). Endpoints validés: auth login/me/logout/register, CRUD x5 entités + recherche, sessions CRUD + statut + progression, dashboard /stats (incl. ca_cpf=889480€) + /calendar, factures-cpf list/stats (237 factures, 889 480 €) + ré-import idempotent, EDOF preview + commit groupement='mois' (2 sessions) et 'exact' (4 sessions), 8 types de PDF, classer + docs apprenants upload/soft-delete, fusion apprenants, qualité/doublons, parametres organisme GET/PUT, purge-demo idempotent. Frontend smoke OK: login → dashboard avec KPI 'dont 889 480 € CPF encaissés' visible, /apprenants charge, bouton 'Importer EDOF (CPF)' ouvre ImportEdofDialog, après upload CSV l'étape 2 affiche la section 'Regroupement des sessions' avec les deux radios data-testid edof-groupement-mois et edof-groupement-exact (mois sélectionné par défaut).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS", "issue": "allow_credentials=True + allow_origins=['*'] reste contradictoire avec la spec CORS (port depuis iteration_2, non-bloquant car FastAPI renvoie l'origine; à durcir en prod)."},
+      {"endpoint": "/api/auth/logout", "issue": "JWT non blacklisté côté serveur — cookies effacés mais token reste valide jusqu'à exp 8h (acceptable MVP, déjà noté)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard 'Sessions par statut' (Recharts)", "issues": ["Warning console récurrent: 'width(-1) and height(-1) of chart should be greater than 0' — le chart se rend correctement mais le ResponsiveContainer émet ce warning au premier render. Carry-over depuis iteration_1/2."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_blade_academy.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optionnel: pin CORS_ORIGINS à REACT_APP_BACKEND_URL au lieu de '*' (cohérence credentials cookies httpOnly).",
+    "Optionnel: ajouter minHeight au ResponsiveContainer du chart 'Sessions par statut' pour éliminer le warning Recharts."
+  ],
+  "critical_code_review_comments": [
+    "Bon refactoring: server.py passé de ~1480 lignes à 71 lignes (point d'entrée mince). Modules /routes bien découpés par domaine — résout le commentaire de iteration_2.",
+    "deps.py, models.py et seed.py extraits proprement; imports modulaires fonctionnels.",
+    "Le PDF generation reste synchrone (ReportLab) dans des handlers async — à wrapper dans run_in_executor pour scalabilité (non bloquant à ce stade).",
+    "@app.on_event('startup'/'shutdown') deprecated FastAPI — migrer vers lifespan context manager à l'occasion."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (31/31)", "frontend": "100%"},
+  "test_credentials": "admin@blade-academy.fr / admin123 — confirmé fonctionnel.",
+  "seed_data_creation": "Tests créent leur propre data avec préfixes TEST_/DOSS-TUI- et nettoient à la fin. État DB initial: 237 factures CPF (889 480 €), 0 sessions/apprenants — préservé.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Refactoring validé sans régression. Run: pytest /app/backend/tests/test_blade_academy.py -v. Toutes les routes sont sous /api via APIRouter(prefix='/api') dans server.py. data-testid frontend confirmés: login-email, login-password, login-submit, edof-groupement-mois, edof-groupement-exact. ImportEdofDialog: étape 1 = upload (input[type=file]), étape 2 = mapping + 'Regroupement des sessions'.",
+  "rca of the issue": "N/A — aucune régression détectée suite au refactoring modulaire."
+}

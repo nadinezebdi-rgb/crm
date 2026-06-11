@@ -24,10 +24,11 @@ export default function ImportEdofDialog({ onDone }) {
   const [preview, setPreview] = useState(null);
   const [mapping, setMapping] = useState({});
   const [createSessions, setCreateSessions] = useState(true);
+  const [groupement, setGroupement] = useState("mois");
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
 
-  const reset = () => { setStep(1); setPreview(null); setMapping({}); setResult(null); setCreateSessions(true); };
+  const reset = () => { setStep(1); setPreview(null); setMapping({}); setResult(null); setCreateSessions(true); setGroupement("mois"); };
 
   const uploadFile = async (file) => {
     if (!file) return;
@@ -51,6 +52,7 @@ export default function ImportEdofDialog({ onDone }) {
         rows: preview.rows,
         mapping,
         create_sessions: createSessions,
+        groupement,
       });
       setResult(data);
       setStep(3);
@@ -155,6 +157,28 @@ export default function ImportEdofDialog({ onDone }) {
                 Les dossiers sont regroupés par formation et dates ; chaque groupe devient une session (rattachée au financeur CPF) avec ses stagiaires inscrits. Les dossiers annulés/refusés sont ignorés.
               </span>
             </label>
+
+            {createSessions && (
+              <div className="rounded-md border border-slate-200 p-3 space-y-2" data-testid="edof-groupement-block">
+                <div className="text-xs font-semibold text-slate-700">Regroupement des sessions</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className={`flex items-start gap-2 cursor-pointer rounded-md border p-2.5 text-xs transition ${groupement === "mois" ? "border-brand-500 bg-brand-50 ring-1 ring-brand-300" : "border-slate-200 hover:border-brand-200"}`}>
+                    <input type="radio" name="edof-groupement" value="mois" checked={groupement === "mois"} onChange={() => setGroupement("mois")} data-testid="edof-groupement-mois" className="mt-0.5 accent-brand-600" />
+                    <span>
+                      <span className="font-semibold block">Par mois (recommandé)</span>
+                      <span className="text-slate-600">Une session par formation et par mois (ex. « Maquillage Pro — juillet 2025 »). Idéal pour l'analyse CPF.</span>
+                    </span>
+                  </label>
+                  <label className={`flex items-start gap-2 cursor-pointer rounded-md border p-2.5 text-xs transition ${groupement === "exact" ? "border-brand-500 bg-brand-50 ring-1 ring-brand-300" : "border-slate-200 hover:border-brand-200"}`}>
+                    <input type="radio" name="edof-groupement" value="exact" checked={groupement === "exact"} onChange={() => setGroupement("exact")} data-testid="edof-groupement-exact" className="mt-0.5 accent-brand-600" />
+                    <span>
+                      <span className="font-semibold block">Par dates exactes</span>
+                      <span className="text-slate-600">Une session par triplet formation / date de début / date de fin (regroupement strict).</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={reset} data-testid="edof-back-btn">Changer de fichier</Button>
