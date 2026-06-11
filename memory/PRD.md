@@ -109,6 +109,13 @@ Plateforme web complète de gestion d'organisme de formation (français) couvran
 - Vérifié en préversion : 0 doublon (5 apprenants seed, 237 factures réelles). Détection testée par insertion/suppression de doublons artificiels (email + n° facture détectés).
 - Rappel donné à l'utilisateur : recherche déjà présente partout (barre globale topbar → sessions, champ recherche sur chaque page de liste, recherche factures par n° dossier/facture).
 
+## Fiche apprenant + documents + fusion (v1.8 — 11 juin 2026)
+- **Stockage de fichiers persistant** : intégration Emergent Object Storage (`/app/backend/storage.py`, httpx async, init avec EMERGENT_LLM_KEY ajoutée au backend/.env, retry sur 403, préfixe `blade-academy-crm/`). Persiste entre déploiements.
+- **Documents apprenants** (collection `apprenant_documents`) : 11 catégories (certificat ExAssess, convocation certification, facture, attestation d'assiduité, relevé de connexion, contrat, émargement présentiel, DPC, convention, suivi des communications, autre). Endpoints : `GET/POST /api/apprenants/{id}/documents` (upload multipart, max 10 Mo, catégorie validée), `GET /api/documents-apprenants/{doc_id}/download` (inline, auth cookie), `DELETE` (soft delete).
+- **Fiche apprenant** : nouvelle page `/apprenants/:id` (ApprenantDetail.jsx) — en-tête (avatar initiales, email, tél, badge dossier CPF, compteur docs), sessions suivies (liens), grille des 11 catégories avec upload/téléchargement/suppression par fichier. Lignes des listes CrudPage cliquables via prop `rowHref` (boutons edit/delete avec stopPropagation).
+- **Fusion de doublons** : `POST /api/apprenants/fusionner {apprenant_ids}` — conserve la fiche la plus ancienne, hérite des champs manquants (email, tél, dossier_cpf, adresse, date naissance, entreprise), concatène les notes, réaffecte sessions + documents, supprime les doublons. Boutons "Fusionner" (ambre) sur chaque groupe de doublons dans Paramètres > Qualité des données.
+- Testé e2e : upload/download/delete réels via Object Storage (contenu vérifié), validation catégorie (400), fusion complète (dossier CPF hérité, 1 session + 1 doc réaffectés, doublon supprimé), UI fiche apprenant + upload via navigateur vérifiés. Données de test nettoyées.
+
 ## Endpoints (résumé)
 - `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
 - `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
