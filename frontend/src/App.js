@@ -8,6 +8,7 @@ import api from "@/lib/api";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Sessions from "@/pages/Sessions";
 import SessionDetail from "@/pages/SessionDetail";
@@ -77,31 +78,30 @@ function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route
-        path="/"
         element={
           <ProtectedRoute>
             <Layout />
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="sessions" element={<Sessions />} />
-        <Route path="sessions/new" element={<SessionCreate />} />
-        <Route path="sessions/:id" element={<SessionDetail />} />
-        <Route path="facturation" element={<Facturation />} />
-        <Route path="apprenants" element={<Apprenants />} />
-        <Route path="apprenants/:id" element={<ApprenantDetail />} />
-        <Route path="formateurs" element={<Formateurs />} />
-        <Route path="entreprises" element={<Entreprises />} />
-        <Route path="financeurs" element={<Financeurs />} />
-        <Route path="lieux" element={<Lieux />} />
-        <Route path="parametres" element={<Parametres />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/sessions" element={<Sessions />} />
+        <Route path="/sessions/new" element={<SessionCreate />} />
+        <Route path="/sessions/:id" element={<SessionDetail />} />
+        <Route path="/facturation" element={<Facturation />} />
+        <Route path="/apprenants" element={<Apprenants />} />
+        <Route path="/apprenants/:id" element={<ApprenantDetail />} />
+        <Route path="/formateurs" element={<Formateurs />} />
+        <Route path="/entreprises" element={<Entreprises />} />
+        <Route path="/financeurs" element={<Financeurs />} />
+        <Route path="/lieux" element={<Lieux />} />
+        <Route path="/parametres" element={<Parametres />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
