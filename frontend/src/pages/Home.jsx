@@ -60,8 +60,12 @@ export default function Home() {
               </Link>
             ) : (
               <>
-                <Link to="/login" data-testid="home-link-login" className="text-xs text-white/80 hover:text-white transition-colors">
-                  Se connecter
+                <Link
+                  to="/login"
+                  data-testid="home-link-login"
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-semibold transition-colors"
+                >
+                  <SignIn size={13} weight="bold" /> Se connecter
                 </Link>
                 <Link
                   to="/register"
@@ -248,6 +252,18 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Floating sticky login button */}
+      {!user && (
+        <Link
+          to="/login"
+          data-testid="home-floating-login"
+          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 h-12 px-5 rounded-full bg-brand-500 hover:bg-brand-400 text-white text-sm font-semibold shadow-2xl shadow-brand-500/40 transition-all hover:scale-[1.03] animate-fade-in"
+          aria-label="Se connecter à mon espace"
+        >
+          <SignIn size={18} weight="bold" /> Se connecter
+        </Link>
+      )}
     </div>
   );
 }
