@@ -17,6 +17,7 @@ import {
   Users,
   ChalkboardTeacher,
   CurrencyEur,
+  Trash,
 } from "@phosphor-icons/react";
 import { statusBadgeClass } from "./Dashboard";
 
@@ -74,6 +75,33 @@ export default function Sessions() {
     }
   };
 
+  const deleteSession = async (session) => {
+    if (!window.confirm(`Supprimer définitivement la session « ${session.nom} » ?\n\nCette action est irréversible. Les documents générés pour cette session resteront classés dans les fiches des stagiaires.`)) return;
+    try {
+      await api.delete(`/sessions/${session.id}`);
+      toast.success("Session supprimée");
+      load();
+    } catch (e) {
+      toast.error("Suppression impossible");
+    }
+  };
+
+  const deleteSessionsCpf = async () => {
+    const cpfSessions = sessions.filter((s) => (s.code_interne || "").startsWith("CPF-"));
+    if (cpfSessions.length === 0) {
+      toast.info("Aucune session CPF auto-générée à supprimer");
+      return;
+    }
+    if (!window.confirm(`Supprimer ${cpfSessions.length} session(s) auto-générée(s) depuis les factures CPF ?\n\nVous pourrez les régénérer à tout moment depuis la page Facturation CPF.`)) return;
+    try {
+      await Promise.all(cpfSessions.map((s) => api.delete(`/sessions/${s.id}`)));
+      toast.success(`${cpfSessions.length} session(s) CPF supprimée(s)`);
+      load();
+    } catch (e) {
+      toast.error("Suppression impossible");
+    }
+  };
+
   return (
     <div className="p-6 lg:p-8" data-testid="sessions-page">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
@@ -99,6 +127,17 @@ export default function Sessions() {
               <ListBullets size={14} /> Liste
             </button>
           </div>
+          {sessions.some((s) => (s.code_interne || "").startsWith("CPF-")) && (
+            <Button
+              variant="outline"
+              onClick={deleteSessionsCpf}
+              data-testid="delete-sessions-cpf-btn"
+              className="border-red-200 text-red-700 hover:bg-red-50"
+              title="Supprime toutes les sessions générées automatiquement depuis la facturation CPF"
+            >
+              <Trash size={14} className="mr-1.5" /> Vider sessions CPF
+            </Button>
+          )}
           <Button onClick={() => navigate("/sessions/new")} data-testid="new-session-btn" className="bg-brand-600 hover:bg-brand-700">
             <Plus size={16} className="mr-1.5" /> Nouvelle session
           </Button>
@@ -148,7 +187,7 @@ export default function Sessions() {
               </div>
               <div className="space-y-2.5">
                 {byColumn[col.key].map((s) => (
-                  <SessionCard key={s.id} session={s} onMove={updateStatus} />
+                  <SessionCard key={s.id} session={s} onMove={updateStatus} onDelete={deleteSession} />
                 ))}
                 {byColumn[col.key].length === 0 && (
                   <div className="text-xs text-slate-400 text-center py-6 border border-dashed border-slate-200 rounded-md">Vide</div>
@@ -167,28 +206,37 @@ export default function Sessions() {
             <div className="col-span-1 text-right">CA</div>
           </div>
           {sessions.map((s) => (
-            <Link
+            <div
               key={s.id}
-              to={`/sessions/${s.id}`}
-              className="grid grid-cols-12 items-center px-5 py-3.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
+              className="grid grid-cols-12 items-center px-5 py-3.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors group"
               data-testid={`row-${s.id}`}
             >
-              <div className="col-span-5">
+              <Link to={`/sessions/${s.id}`} className="col-span-5 min-w-0">
                 <div className="text-sm font-medium text-slate-900 truncate">{s.nom}</div>
                 <div className="text-[11px] text-slate-500 font-mono mt-0.5">{s.code_interne}</div>
-              </div>
-              <div className="col-span-2">
+              </Link>
+              <Link to={`/sessions/${s.id}`} className="col-span-2">
                 <Badge className={`text-[10px] uppercase tracking-wider ${statusBadgeClass(s.statut)}`}>
                   {COLUMNS.find((c) => c.key === s.statut)?.label}
                 </Badge>
-              </div>
-              <div className="col-span-2 text-xs text-slate-600">{s.date_debut || "—"} → {s.date_fin || "—"}</div>
-              <div className="col-span-2 flex items-center gap-2">
+              </Link>
+              <Link to={`/sessions/${s.id}`} className="col-span-2 text-xs text-slate-600">{s.date_debut || "—"} → {s.date_fin || "—"}</Link>
+              <Link to={`/sessions/${s.id}`} className="col-span-2 flex items-center gap-2">
                 <Progress value={s.progression.percent} className="h-1.5 flex-1" />
                 <span className="text-[11px] text-slate-500 font-mono">{s.progression.percent}%</span>
+              </Link>
+              <div className="col-span-1 flex items-center justify-end gap-2">
+                <Link to={`/sessions/${s.id}`} className="font-mono text-sm font-semibold text-slate-900">{(s.ca || 0).toLocaleString("fr-FR")}€</Link>
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteSession(s); }}
+                  className="h-7 w-7 rounded hover:bg-red-50 text-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  data-testid={`session-delete-${s.id}`}
+                  title="Supprimer la session"
+                >
+                  <Trash size={14} />
+                </button>
               </div>
-              <div className="col-span-1 text-right font-mono text-sm font-semibold text-slate-900">{(s.ca || 0).toLocaleString("fr-FR")}€</div>
-            </Link>
+            </div>
           ))}
           {sessions.length === 0 && (
             <div className="p-10 text-center text-sm text-slate-500">Aucune session trouvée.</div>
@@ -199,10 +247,18 @@ export default function Sessions() {
   );
 }
 
-function SessionCard({ session, onMove }) {
+function SessionCard({ session, onMove, onDelete }) {
   return (
-    <Link to={`/sessions/${session.id}`} className="block" data-testid={`card-${session.id}`}>
+    <Link to={`/sessions/${session.id}`} className="block group relative" data-testid={`card-${session.id}`}>
       <Card className="kanban-card border-slate-200 bg-white shadow-none p-3.5 cursor-pointer">
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete?.(session); }}
+          className="absolute top-2 right-2 h-6 w-6 rounded hover:bg-red-50 text-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-slate-200"
+          data-testid={`card-delete-${session.id}`}
+          title="Supprimer la session"
+        >
+          <Trash size={12} />
+        </button>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="text-[10px] uppercase tracking-widest text-slate-400 font-mono">{session.code_interne}</div>
