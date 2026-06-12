@@ -28,6 +28,7 @@ import {
   ClipboardText,
   ShareNetwork,
   FolderSimplePlus,
+  Trash,
 } from "@phosphor-icons/react";
 import { statusBadgeClass } from "./Dashboard";
 
@@ -70,6 +71,17 @@ export default function SessionDetail() {
       toast.error(e.response?.data?.detail || "Classement impossible");
     } finally {
       setClassing(null);
+    }
+  };
+
+  const deleteSession = async () => {
+    if (!window.confirm(`Supprimer définitivement la session « ${session?.nom} » ?\n\nCette action est irréversible. Les documents générés (PDFs déjà classés dans les fiches stagiaires) ne seront pas supprimés.`)) return;
+    try {
+      await api.delete(`/sessions/${id}`);
+      toast.success("Session supprimée");
+      navigate("/sessions");
+    } catch (e) {
+      toast.error("Suppression impossible");
     }
   };
 
@@ -130,6 +142,17 @@ export default function SessionDetail() {
       <button onClick={() => navigate("/sessions")} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 mb-3">
         <ArrowLeft size={12} /> Retour
       </button>
+
+      <div className="flex justify-end mb-3">
+        <Button
+          variant="outline"
+          onClick={deleteSession}
+          data-testid="session-detail-delete-btn"
+          className="border-red-200 text-red-700 hover:bg-red-50"
+        >
+          <Trash size={14} className="mr-1.5" /> Supprimer la session
+        </Button>
+      </div>
 
       {/* Bandeau permanent */}
       <Card className="border-slate-200 shadow-none p-5 mb-6" data-testid="session-banner">
