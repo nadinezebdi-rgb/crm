@@ -47,3 +47,13 @@ Dates auto-renseignées :
 - Remplacer le date input HTML5 par le composant Calendar shadcn (cohérence UX)
 - Limiter taille/MIME des uploads (DoS hardening)
 - Pagination des `/dossiers/*` lorsque > 5000 dossiers
+
+## Itération 3 (13 Jan 2026) — Import EDOF + Vider
+- ✅ Backend : POST /api/dossiers-admin/import-edof (parse CSV/XLSX, auto-mappe 9 colonnes, défauts formateur/financeur/formation)
+- ✅ Backend : DELETE /api/dossiers-admin/clear?scope=all|active|closed (supprime dossiers + documents + fichiers disque)
+- ✅ Backend : 3 formateurs auto-seedés au démarrage : NEO FORMATION, HIGH SKILLS, VIRGINIA DERFEUIL
+- ✅ Backend : parser EDOF étendu pour reconnaître `date_naissance` et `adresse`
+- ✅ Frontend : EdofImportDialog (drop-zone, défauts financeur/formation/formateur, preview mapping)
+- ✅ Frontend : ClearDossiersDialog (3 scopes, confirmation par saisie « SUPPRIMER »)
+- ✅ Frontend : 2 nouveaux boutons sur le Tableau de Bord à côté de "Nouveau stagiaire"
+- ✅ Tests : 35/35 pytest backend (9 nouveaux + 26 régression)
