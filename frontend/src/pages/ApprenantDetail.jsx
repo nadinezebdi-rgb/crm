@@ -119,6 +119,13 @@ export default function ApprenantDetail() {
                     <IdentificationCard size={12} className="mr-1" /> Dossier CPF n° {apprenant.dossier_cpf}
                   </Badge>
                 )}
+                {apprenant.formation && <span className="inline-flex items-center gap-1"><Kanban size={13} /> {apprenant.formation}</span>}
+                {apprenant.niveau && (
+                  <Badge className="bg-brand-50 text-brand-700 border-brand-200 text-[10px]">Niveau {apprenant.niveau}</Badge>
+                )}
+                {(apprenant.date_debut || apprenant.date_fin) && (
+                  <span className="inline-flex items-center gap-1">Du {fmtDate(apprenant.date_debut)} au {fmtDate(apprenant.date_fin)}</span>
+                )}
               </div>
             </div>
           </div>
