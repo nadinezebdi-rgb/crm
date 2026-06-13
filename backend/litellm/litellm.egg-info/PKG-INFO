@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: litellm
+Version: 1.0.0
+Summary: Local stub package for litellm used in repo for development
+Dynamic: summary
