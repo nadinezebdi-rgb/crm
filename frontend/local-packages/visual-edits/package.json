@@ -1,0 +1,8 @@
+{
+  "name": "@emergentbase/visual-edits",
+  "version": "1.0.8-stub",
+  "main": "index.js",
+  "description": "Local stub of @emergentbase/visual-edits for development",
+  "author": "stub",
+  "license": "MIT"
+}

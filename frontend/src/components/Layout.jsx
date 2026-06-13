@@ -1,107 +1,186 @@
-import React from "react";
-import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, UserPlus, GraduationCap, Archive, Users, GanttChart } from "lucide-react";
+import React, { useState } from "react";
+import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import {
+  House,
+  Kanban,
+  Receipt,
+  Users,
+  ChalkboardTeacher,
+  Buildings,
+  Bank,
+  MapPin,
+  Gear,
+  MagnifyingGlass,
+  Bell,
+  SignOut,
+  CaretRight,
+  Archive,
+} from "@phosphor-icons/react";
+import { useAuth } from "@/context/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-const navActive = [
-  { to: "/", label: "Tableau de Bord", icon: LayoutDashboard, testid: "sidebar-nav-dashboard" },
-  { to: "/onboarding", label: "Onboarding", icon: UserPlus, testid: "sidebar-nav-onboarding" },
-  { to: "/actions", label: "Actions de Formation", icon: GraduationCap, testid: "sidebar-nav-actions" },
+const NAV = [
+  { to: "/dashboard", label: "Accueil", icon: House, testid: "nav-dashboard", zone: "actif" },
+  { to: "/kanban", label: "Tableau de Bord", icon: Kanban, testid: "nav-kanban", zone: "actif" },
+  { to: "/onboarding", label: "Onboarding", icon: Users, testid: "nav-onboarding", zone: "actif" },
+  { to: "/actions", label: "Actions de Formation", icon: ChalkboardTeacher, testid: "nav-actions", zone: "actif" },
+  { to: "/sessions", label: "Sessions", icon: Kanban, testid: "nav-sessions", zone: "data" },
+  { to: "/facturation", label: "Facturation CPF", icon: Receipt, testid: "nav-facturation", zone: "data" },
+  { to: "/apprenants", label: "Apprenants", icon: Users, testid: "nav-apprenants", zone: "data" },
+  { to: "/formateurs", label: "Formateurs", icon: ChalkboardTeacher, testid: "nav-formateurs", zone: "data" },
+  { to: "/entreprises", label: "Entreprises", icon: Buildings, testid: "nav-entreprises", zone: "data" },
+  { to: "/financeurs", label: "Financeurs", icon: Bank, testid: "nav-financeurs", zone: "data" },
+  { to: "/lieux", label: "Lieux", icon: MapPin, testid: "nav-lieux", zone: "data" },
+  { to: "/archives", label: "Dossiers Clôturés", icon: Archive, testid: "nav-archives", zone: "historique" },
+  { to: "/parametres", label: "Paramètres", icon: Gear, testid: "nav-parametres", zone: "config" },
 ];
-
-const navAdmin = [
-  { to: "/formateurs", label: "Formateurs", icon: Users, testid: "sidebar-nav-formateurs" },
-];
-
-const navHistory = [
-  { to: "/archives", label: "Dossiers Clôturés", icon: Archive, testid: "sidebar-nav-archives" },
-];
-
-function NavItem({ to, label, icon: Icon, testid }) {
-  return (
-    <NavLink
-      end={to === "/"}
-      to={to}
-      data-testid={testid}
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-          isActive
-            ? "bg-slate-900 text-white shadow-sm"
-            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-        }`
-      }
-    >
-      <Icon className="h-4 w-4" strokeWidth={2} />
-      <span className="truncate">{label}</span>
-    </NavLink>
-  );
-}
-
-function ZoneLabel({ children }) {
-  return (
-    <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-      {children}
-    </div>
-  );
-}
 
 export default function Layout() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gray-50" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
-      <aside
-        data-testid="app-sidebar"
-        className="w-64 flex-shrink-0 flex flex-col border-r border-gray-200 bg-white"
-      >
-        <div className="h-16 flex items-center px-5 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-md bg-slate-900 flex items-center justify-center text-white">
-              <GanttChart className="h-4 w-4" />
-            </div>
-            <div className="leading-tight">
-              <div className="text-sm font-bold tracking-tight text-slate-900" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                CRM Formation
+    <div className="min-h-screen flex bg-[rgb(var(--bg))]" data-testid="app-layout">
+      {/* Sidebar — Blade navy */}
+      <aside className="hidden md:flex flex-col w-64 shrink-0 bg-navy border-r border-navy-border" data-testid="sidebar">
+        <div className="h-16 px-5 flex items-center border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <img src="/blade-logo.png" alt="Blade Academy" className="h-9 w-9 rounded-full ring-1 ring-white/15" />
+            <div>
+              <div className="font-display font-bold tracking-tight uppercase text-white leading-tight">
+                Blade<span className="text-brand-400">Academy</span>
               </div>
-              <div className="text-[10px] uppercase tracking-widest text-slate-400">Pilotage</div>
+              <div className="text-[9px] uppercase tracking-widest text-slate-400">Gestion de formation</div>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-5 space-y-6">
-          <div>
-            <ZoneLabel>Espace Actif</ZoneLabel>
-            <div className="space-y-1">
-              {navActive.map((n) => (
-                <NavItem key={n.to} {...n} />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <ZoneLabel>Administration</ZoneLabel>
-            <div className="space-y-1">
-              {navAdmin.map((n) => (
-                <NavItem key={n.to} {...n} />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <ZoneLabel>Espace Historique</ZoneLabel>
-            <div className="space-y-1">
-              {navHistory.map((n) => (
-                <NavItem key={n.to} {...n} />
-              ))}
-            </div>
-          </div>
+        <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
+          <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-brand-400 font-bold">Espace Actif</div>
+          {NAV.filter((n) => n.zone === "actif").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Données</div>
+          {NAV.filter((n) => n.zone === "data").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-amber-400 font-bold">Espace Historique</div>
+          {NAV.filter((n) => n.zone === "historique").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Config</div>
+          {NAV.filter((n) => n.zone === "config").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
         </nav>
 
-        <div className="px-5 py-4 border-t border-gray-200 text-[11px] text-slate-400">
-          v1.0 · {new Date().getFullYear()}
+        <div className="p-3 border-t border-white/10">
+          <div className="rounded-lg bg-white/5 border border-white/10 p-3 text-xs">
+            <div className="font-semibold text-brand-300 mb-1">Conformité Qualiopi</div>
+            <div className="text-slate-400 leading-relaxed">Audit prêt en quelques clics depuis chaque session.</div>
+          </div>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
-        <Outlet />
-      </main>
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar */}
+        <header className="h-16 sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200 px-4 md:px-8 flex items-center gap-3" data-testid="topbar">
+          <div className="flex-1 max-w-xl relative">
+            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              data-testid="global-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && search.trim()) navigate(`/sessions?q=${encodeURIComponent(search)}`);
+              }}
+              placeholder="Rechercher une session, un apprenant, une entreprise…"
+              className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"
+            />
+          </div>
+          <button
+            className="relative h-9 w-9 rounded-md border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-colors"
+            data-testid="notifications-btn"
+          >
+            <Bell size={18} weight="regular" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-2.5 h-9 pl-1.5 pr-3 rounded-md border border-slate-200 hover:bg-slate-50 transition-colors"
+                data-testid="user-menu-trigger"
+              >
+                <div className="h-7 w-7 rounded-full bg-navy text-white text-xs font-semibold flex items-center justify-center overflow-hidden">
+                  {user?.picture ? (
+                    <img src={user.picture} alt={user.name} className="h-full w-full object-cover" />
+                  ) : (
+                    (user?.name || user?.email || "?").substring(0, 2).toUpperCase()
+                  )}
+                </div>
+                <div className="text-left hidden sm:block">
+                  <div className="text-xs font-semibold text-slate-900 leading-tight">{user?.name || user?.email}</div>
+                  <div className="text-[10px] text-slate-500 leading-tight">{user?.organisme}</div>
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="text-xs font-semibold text-slate-900">{user?.name}</div>
+                <div className="text-[11px] text-slate-500 font-normal">{user?.email}</div>
+                <div className="text-[10px] mt-1 inline-flex items-center px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase tracking-wider font-semibold">
+                  {user?.role}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate("/parametres")} data-testid="menu-parametres">
+                <Gear size={14} className="mr-2" /> Paramètres
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={logout} data-testid="logout-btn" className="text-red-600 focus:text-red-700">
+                <SignOut size={14} className="mr-2" /> Se déconnecter
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+
+        <main className="flex-1 min-w-0 overflow-x-hidden">
+          <Outlet />
+        </main>
+      </div>
     </div>
+  );
+}
+
+function SidebarItem({ to, label, icon: Icon, testid }) {
+  return (
+    <NavLink
+      to={to}
+      data-testid={testid}
+      className={({ isActive }) =>
+        `group flex items-center gap-3 px-3 h-9 rounded-md text-sm transition-colors ${
+          isActive
+            ? "bg-white/10 text-brand-300 font-medium"
+            : "text-slate-400 hover:bg-white/5 hover:text-white"
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon size={18} weight={isActive ? "fill" : "regular"} />
+          <span className="flex-1">{label}</span>
+          {isActive && <CaretRight size={12} className="text-brand-400" />}
+        </>
+      )}
+    </NavLink>
   );
 }

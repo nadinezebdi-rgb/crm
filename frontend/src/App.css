@@ -1,8 +1,1 @@
-.App {
-  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #0f172a;
-}
-
-html, body, #root {
-  height: 100%;
-}
+/* Cleared in favor of index.css — keep file for legacy import compatibility. */

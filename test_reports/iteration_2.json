@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 — Full backend+frontend validation of the Kanban Dossiers workflow added on top of the existing Blade Academy CRM. 26/26 pytest backend tests PASS (auth, CRUD dossiers, workflow status transitions w/ auto-dates, search ?q, documents upload/list/download/delete, cascade delete, regression on existing endpoints). Full frontend E2E: Login → Onboarding (form with all 14+ data-testid fields) → submitted dossier appears in Kanban 'Devis en attente' with OPCO badge → 'Avancer' clicked 4× cycles through devis_valide/en_formation/fin_formation/facture → 'Marquer comme réglé' → card disappears from /kanban and appears in /archives where search filters correctly. Sidebar shows the 4 distinct zones (Espace Actif brand-400 blue, Données, Espace Historique amber-400, Config). No critical issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dossiers/closed?q=", "issue": "Two-pass query: first MongoDB $or on (nom/prenom/financeur_nom/formation) + a full re-fetch of all closed dossiers in Python to filter on formateur_nom. Functional but O(N) and duplicates lookups. Recommend denormalizing formateur_nom on the dossier doc on create/update (or use $lookup)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Onboarding form", "issues": ["Field 'Date de naissance' uses native browser HTML5 date input (mm/dd/yyyy placeholder) instead of the shadcn calendar component used elsewhere in the app — UX inconsistency."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dossiers.py",
+    "/app/backend/tests/test_blade_academy.py",
+    "/app/test_reports/pytest/dossiers_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Denormalize formateur_nom on dossier creation/update to simplify and speed up /dossiers/closed?q= search.",
+    "(Optional) Replace native date input on Onboarding form with shadcn Calendar/Date picker for UX consistency."
+  ],
+  "critical_code_review_comments": [
+    "routes/dossiers.py: all endpoints correctly require auth (Depends(get_current_user)). HTTPException 401 returned cleanly for unauthenticated calls.",
+    "routes/dossiers.py L131-143: closed search performs an additional unbounded find({status:'regle'}) for formateur_nom matching — see minor issue above. Limit to_list(5000) used on both calls — acceptable upper bound for current scale but should be paginated long-term.",
+    "routes/dossiers.py: documents stored on local disk /app/backend/uploads_dossiers/. No size limit / mime-type validation beyond Literal type — could be a DoS surface. Consider max file size + extension whitelist.",
+    "routes/dossiers.py L173-180: auto-date logic only sets date_debut_formation/fin_formation when missing — good, prevents overwrite on re-transitions. date_cloture only set when transitioning INTO 'regle' from another status — correct.",
+    "DossierDrawer.jsx / DossiersClotures.jsx etc.: all interactive elements have data-testid (closed-row-{id}, search-dossiers-input, onboarding-*, kanban-column-{id}, kanban-card-{id}, action-card-{id}, actions-search) — excellent testability.",
+    "Layout.jsx zones correctly filtered (actif/data/historique/config); 'Espace Actif' in brand-400 blue and 'Espace Historique' in amber-400 as specified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dossiers.py (new file, 26 tests)",
+    "/app/memory/test_credentials.md (populated with admin@blade-academy.fr / admin123)"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% (E2E flow PASS: login→onboarding→kanban→avancer×4→regle→archives→search)"},
+  "test_credentials": "admin@blade-academy.fr / admin123",
+  "seed_data_creation": "Tests use TEST_ prefix and clean up via DELETE in the same test. One TEST_E2E_xxx dossier was created during the frontend E2E run and archived to /archives (visible under search 'TEST_'). Safe to ignore or delete manually.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All new /api/dossiers* endpoints fully tested in /app/backend/tests/test_dossiers.py. Existing CRM endpoints regression-covered (sessions/apprenants/formateurs/entreprises/financeurs/lieux). To rerun: `pytest /app/backend/tests/test_dossiers.py -v`. Frontend uses these data-testids: nav-{kanban,onboarding,actions,archives}, onboarding-input-{nom,prenom,naissance,telephone,adresse,email,financeur-nom,formation,notes}, onboarding-select-{formateur,financeur}, onboarding-submit, kanban-column-{status}, kanban-card-{id}, search-dossiers-input, closed-row-{id}, actions-search, action-card-{id}.",
+  "rca of the issue": "No bug to investigate. Only one minor UX inconsistency (native date input on Onboarding) and one performance hint (denormalize formateur_nom). Neither blocks the feature."
+}

@@ -1,5 +1,5 @@
 import React from "react";
-import { FINANCEUR_STYLES } from "@/lib/constants";
+import { FINANCEUR_STYLES } from "@/lib/dossiers";
 
 export default function FinanceurBadge({ value, testid }) {
   const cls = FINANCEUR_STYLES[value] || "bg-slate-100 text-slate-700 border border-slate-200";

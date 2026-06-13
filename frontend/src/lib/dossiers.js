@@ -1,3 +1,4 @@
+// Constantes pour le workflow de dossiers stagiaires
 export const STATUS_COLUMNS = [
   { id: "devis_attente", title: "Devis en attente", hint: "Relances à effectuer" },
   { id: "devis_valide", title: "Devis validé", hint: "Accord de financement reçu" },
@@ -15,7 +16,7 @@ export const STATUS_LABELS = {
   regle: "Réglé (clôturé)",
 };
 
-export const FINANCEURS = ["OPCO", "CPF", "Privé"];
+export const FINANCEUR_TYPES = ["OPCO", "CPF", "Privé"];
 
 export const FINANCEUR_STYLES = {
   OPCO: "bg-blue-100 text-blue-800 border border-blue-200",
@@ -36,9 +37,22 @@ export const DOC_TYPES = [
   { id: "justificatif_paiement", label: "Justificatif de paiement" },
 ];
 
-export const DOC_TYPE_LABEL = {
-  devis_signe: "Devis signé",
-  attestation: "Attestation",
-  facture: "Facture",
-  justificatif_paiement: "Justificatif de paiement",
-};
+export const DOC_TYPE_LABEL = Object.fromEntries(DOC_TYPES.map((d) => [d.id, d.label]));
+
+export function formatDate(value) {
+  if (!value) return "—";
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+export function formatSize(bytes) {
+  if (!bytes && bytes !== 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
