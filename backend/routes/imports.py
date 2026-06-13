@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
 
 import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
-from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns
+from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns, detect_niveau_anglais
 
 router = APIRouter()
 
@@ -50,25 +50,7 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_
     today_iso = deps.now_utc().date().isoformat()
     import_note = f"Importé depuis EDOF (CPF) le {deps.now_utc().strftime('%d/%m/%Y')}"
 
-    financeur_cpf = None
-    if payload.create_sessions:
-        financeur_cpf = await deps.db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
-        if not financeur_cpf:
-            financeur_cpf = {
-                "id": deps.new_id(),
-                "nom": "Caisse des Dépôts — Mon Compte Formation",
-                "type_financeur": "cpf", "code": "CPF",
-                "email": None, "telephone": None, "adresse": None,
-                "notes": "Créé automatiquement lors de l'import EDOF.",
-                "created_at": deps.now_utc().isoformat(),
-                "updated_at": deps.now_utc().isoformat(),
-            }
-            await deps.db.financeurs.insert_one(dict(financeur_cpf))
-            financeur_cpf.pop("_id", None)
-
-    session_groups: Dict[tuple, dict] = {}
-
-    for i, row in enumerate(payload.rows):
+for i, row in enumerate(payload.rows):
         line_no = i + 2
         nom, prenom = val(row, "nom"), val(row, "prenom")
         if not nom or not prenom:
@@ -80,6 +62,13 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_
             continue
 
         email = val(row, "email").lower()
+        dossier = val(row, "dossier")
+        formation = val(row, "formation")
+        niveau = detect_niveau_anglais(formation)
+        date_debut = parse_date_fr(val(row, "date_debut"))
+        date_fin = parse_date_fr(val(row, "date_fin"))
+        notes = import_note + (f" — Dossier CPF n° {dossier}" if dossier else "")
+
         if email:
             query = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
         else:
@@ -88,89 +77,41 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_
                 "prenom": {"$regex": f"^{re.escape(prenom)}$", "$options": "i"},
             }
         existing = await deps.db.apprenants.find_one(query, {"_id": 0, "id": 1})
+        champs = {
+            "telephone": val(row, "telephone") or None,
+            "dossier_cpf": dossier or None,
+            "formation": formation or None,
+            "niveau": niveau,
+            "date_debut": date_debut,
+            "date_fin": date_fin,
+            "source": "edof",
+            "updated_at": deps.now_utc().isoformat(),
+        }
         if existing:
-            apprenant_id = existing["id"]
+            await deps.db.apprenants.update_one({"id": existing["id"]}, {"$set": champs})
             stats["apprenants_existants"] += 1
         else:
-            apprenant_id = deps.new_id()
-            dossier = val(row, "dossier")
-            notes = import_note + (f" — Dossier CPF n° {dossier}" if dossier else "")
             await deps.db.apprenants.insert_one({
-                "id": apprenant_id, "nom": nom, "prenom": prenom,
+                "id": deps.new_id(), "nom": nom, "prenom": prenom,
                 "email": email or None,
-                "telephone": val(row, "telephone") or None,
                 "entreprise_id": None, "date_naissance": None, "adresse": None,
-                "dossier_cpf": dossier or None, "notes": notes,
+                "notes": notes,
                 "created_at": deps.now_utc().isoformat(),
-                "updated_at": deps.now_utc().isoformat(),
+                **champs,
             })
             stats["apprenants_crees"] += 1
-            if payload.create_sessions:
-                formation = val(row, "formation")
-                if not formation:
-                    continue
-                d1 = parse_date_fr(val(row, "date_debut"))
-            d2 = parse_date_fr(val(row, "date_fin"))
-            if payload.groupement == "mois" and d1:
-                mois = d1[:7]
-                annee, num_mois = mois.split("-")
-                nom_session = f"{formation} — {MOIS_FR[int(num_mois) - 1]} {annee}"
-                key = (formation.lower(), mois)
-            else:
-                nom_session = formation
-                key = (formation.lower(), d1 or "", d2 or "")
-            group = session_groups.setdefault(key, {
-                "nom": nom_session, "date_debut": d1, "date_fin": d2,
-                "apprenants": [], "total": 0.0,
-            })
-            if d1 and (not group["date_debut"] or d1 < group["date_debut"]):
-                group["date_debut"] = d1
-            if d2 and (not group["date_fin"] or d2 > group["date_fin"]):
-                group["date_fin"] = d2
-            if apprenant_id not in group["apprenants"]:
-                group["apprenants"].append(apprenant_id)
-                group["total"] += parse_amount(val(row, "prix"))
-
-    for group in session_groups.values():
-        if payload.groupement == "mois":
-            query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}}
-        else:
-            query = {"nom": {"$regex": f"^{re.escape(group['nom'])}$", "$options": "i"}, "date_debut": group["date_debut"]}
-        existing = await db.sessions.find_one(query, {"_id": 0, "id": 1, "apprenants": 1})
-        if existing:
-            new_ids = [a for a in group["apprenants"] if a not in existing.get("apprenants", [])]
-            if new_ids:
-                await deps.db.sessions.update_one(
-                    {"id": existing["id"]},
-                    {"$push": {"apprenants": {"$each": new_ids}}, "$set": {"updated_at": deps.now_utc().isoformat()}},
-                )
-            stats["sessions_maj"] += 1
-        else:
-            if group["date_fin"] and group["date_fin"] < today_iso:
-                statut = "terminee"
-            elif group["date_debut"]:
-                statut = "planifiee"
-            else:
-                statut = "brouillon"
-            now_iso = deps.now_utc().isoformat()
-            await deps.db.sessions.insert_one({
-                **SessionPayload(
-                    nom=group["nom"], statut=statut,
-                    date_debut=group["date_debut"], date_fin=group["date_fin"],
-                    apprenants=group["apprenants"],
-                    prix_ht=round(group["total"], 2),
-                    financeur_id=financeur_cpf["id"] if financeur_cpf else None,
-                    description=import_note + ".",
-                ).model_dump(),
-                "id": deps.new_id(),
-                "code_interne": f"SES-{now_utc().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}",
-                "created_at": now_iso, "updated_at": now_iso,
-                "convocations_envoyees": False, "evaluations_envoyees": False,
-                "factures_emises": False, "attestations_emises": False,
-            })
-            stats["sessions_creees"] += 1
 
     return stats
+
+@router.delete("/import/edof/reset")
+async def edof_reset(user: dict = Depends(deps.get_current_user)):
+    """Supprime tous les apprenants et sessions importés depuis EDOF (source == 'edof')."""
+    res_app = await deps.db.apprenants.delete_many({"source": "edof"})
+    res_ses = await deps.db.sessions.delete_many({"source": "edof"})
+    return {
+        "apprenants_supprimes": res_app.deleted_count,
+        "sessions_supprimees": res_ses.deleted_count,
+    }
 
 
 # ----- Factures CPF (encaissements) -----
