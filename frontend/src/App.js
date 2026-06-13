@@ -10,6 +10,10 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
+import KanbanDashboard from "@/pages/KanbanDashboard";
+import OnboardingRapide from "@/pages/OnboardingRapide";
+import ActionsFormation from "@/pages/ActionsFormation";
+import DossiersClotures from "@/pages/DossiersClotures";
 import Sessions from "@/pages/Sessions";
 import SessionDetail from "@/pages/SessionDetail";
 import SessionCreate from "@/pages/SessionCreate";
@@ -89,6 +93,10 @@ function AppRouter() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/kanban" element={<KanbanDashboard />} />
+        <Route path="/onboarding" element={<OnboardingRapide />} />
+        <Route path="/actions" element={<ActionsFormation />} />
+        <Route path="/archives" element={<DossiersClotures />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/sessions/new" element={<SessionCreate />} />
         <Route path="/sessions/:id" element={<SessionDetail />} />

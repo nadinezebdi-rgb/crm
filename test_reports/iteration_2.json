@@ -1,44 +1,44 @@
 {
-  "summary": "End-to-end regression on Blade Academy (ex-FormaPro) after rebrand + new EDOF 'groupement' feature. Backend: 31/31 pytest pass (auth, CRUD x5, sessions+status, dashboard incl. ca_cpf, factures-cpf list/stats/re-import idempotent, EDOF preview, EDOF commit groupement='mois' -> 2 sessions, groupement='exact' -> 4 sessions, 8 PDF doc types, classer + apprenant documents, upload+soft-delete, fusion apprenants, qualité doublons, parametres organisme GET/PUT, purge-demo idempotent). Frontend: login -> dashboard (KPI 'dont 889 480 € CPF encaissés' visible), /sessions Kanban + view-list-btn + search, /apprenants with 'Importer EDOF (CPF)' button + ImportEdofDialog (dropzone -> mapping step -> groupement radios with data-testid edof-groupement-mois & edof-groupement-exact -> commit), /facturation showing 20-row paginated table with total 889 480 €, /parametres with Qualité/doublons/purge-demo, SessionDetail Gestion tab with 8 doc cards (convention, contrat, convocation, attestation, facture, émargement, programme, évaluation), each with 'Générer le PDF' + 'Classer dans les fiches' buttons. DB clean state restored after tests (0 leftover sessions/apprenants).",
+  "summary": "Iteration 2 — Full backend+frontend validation of the Kanban Dossiers workflow added on top of the existing Blade Academy CRM. 26/26 pytest backend tests PASS (auth, CRUD dossiers, workflow status transitions w/ auto-dates, search ?q, documents upload/list/download/delete, cascade delete, regression on existing endpoints). Full frontend E2E: Login → Onboarding (form with all 14+ data-testid fields) → submitted dossier appears in Kanban 'Devis en attente' with OPCO badge → 'Avancer' clicked 4× cycles through devis_valide/en_formation/fin_formation/facture → 'Marquer comme réglé' → card disappears from /kanban and appears in /archives where search filters correctly. Sidebar shows the 4 distinct zones (Espace Actif brand-400 blue, Données, Espace Historique amber-400, Config). No critical issues.",
   "backend_issues": {
     "critical": [],
     "minor": [
-      {"endpoint": "CORS", "issue": "CORS_ORIGINS='*' + httpOnly credential cookies is contradictory per spec; FastAPI mitigates by echoing origin but production should pin to explicit origins (REACT_APP_BACKEND_URL)."},
-      {"endpoint": "/api/auth/logout", "issue": "JWT not blacklisted server-side; cookies are cleared but token remains valid until exp (8h). MVP-acceptable."}
+      {"endpoint": "GET /api/dossiers/closed?q=", "issue": "Two-pass query: first MongoDB $or on (nom/prenom/financeur_nom/formation) + a full re-fetch of all closed dossiers in Python to filter on formateur_nom. Functional but O(N) and duplicates lookups. Recommend denormalizing formateur_nom on the dossier doc on create/update (or use $lookup)."}
     ]
   },
   "frontend_issues": {
     "ui_bugs": [],
     "integration_issues": [],
     "design_issues": [
-      {"screen": "Dashboard 'Sessions par statut' chart", "issues": ["Recharts ResponsiveContainer logs 'width(-1) and height(-1)' warning on first render (carry-over from iteration_1; chart still renders correctly). Add explicit minHeight to silence."]}
+      {"screen": "Onboarding form", "issues": ["Field 'Date de naissance' uses native browser HTML5 date input (mm/dd/yyyy placeholder) instead of the shadcn calendar component used elsewhere in the app — UX inconsistency."]}
     ]
   },
   "test_report_links": [
+    "/app/backend/tests/test_dossiers.py",
     "/app/backend/tests/test_blade_academy.py",
-    "/app/test_reports/pytest/pytest_results.xml"
+    "/app/test_reports/pytest/dossiers_results.xml"
   ],
   "action_items": [
-    "Optional: pin CORS_ORIGINS to explicit REACT_APP_BACKEND_URL instead of '*' (credentials + wildcard is spec-violating).",
-    "Optional: add minHeight to Dashboard recharts ResponsiveContainer wrapper to silence width=-1 warning.",
-    "Optional: consider JWT blacklist or shorter access-token TTL + refresh rotation for production hardening."
+    "(Optional) Denormalize formateur_nom on dossier creation/update to simplify and speed up /dossiers/closed?q= search.",
+    "(Optional) Replace native date input on Onboarding form with shadcn Calendar/Date picker for UX consistency."
   ],
   "critical_code_review_comments": [
-    "server.py is now ~1480 lines — split into routers (auth, crud_factory, sessions, dashboard, edof_import, factures_cpf, documents, fusion, parametres) to keep <700 lines per module as suggested in iteration_1.",
-    "EDOF commit (server.py:723-879) duplicates apprenant find-or-create logic that could be extracted; financeur_cpf find-or-create is similar.",
-    "PDF generation is synchronous (ReportLab) inside async handlers — wrap in run_in_executor when scaling.",
-    "Generic CRUD factory PUT writes full payload.model_dump() without preserving server-managed timestamps (id is matcher so safe).",
-    "Idempotency of EDOF commit: when groupement='mois', re-running with same data results in sessions_maj=2 (no duplicate created) — confirmed working.",
-    "fusion endpoint expects 'apprenant_ids' (snake_case) — fine, but doc test_credentials.md could mention it for consistency."
+    "routes/dossiers.py: all endpoints correctly require auth (Depends(get_current_user)). HTTPException 401 returned cleanly for unauthenticated calls.",
+    "routes/dossiers.py L131-143: closed search performs an additional unbounded find({status:'regle'}) for formateur_nom matching — see minor issue above. Limit to_list(5000) used on both calls — acceptable upper bound for current scale but should be paginated long-term.",
+    "routes/dossiers.py: documents stored on local disk /app/backend/uploads_dossiers/. No size limit / mime-type validation beyond Literal type — could be a DoS surface. Consider max file size + extension whitelist.",
+    "routes/dossiers.py L173-180: auto-date logic only sets date_debut_formation/fin_formation when missing — good, prevents overwrite on re-transitions. date_cloture only set when transitioning INTO 'regle' from another status — correct.",
+    "DossierDrawer.jsx / DossiersClotures.jsx etc.: all interactive elements have data-testid (closed-row-{id}, search-dossiers-input, onboarding-*, kanban-column-{id}, kanban-card-{id}, action-card-{id}, actions-search) — excellent testability.",
+    "Layout.jsx zones correctly filtered (actif/data/historique/config); 'Espace Actif' in brand-400 blue and 'Espace Historique' in amber-400 as specified."
   ],
   "updated_files": [
-    "/app/backend/tests/test_blade_academy.py (rewritten/replaced old test_formapro.py — covers all new features: EDOF groupement, classer, fusion, factures-cpf, qualité, parametres)"
+    "/app/backend/tests/test_dossiers.py (new file, 26 tests)",
+    "/app/memory/test_credentials.md (populated with admin@blade-academy.fr / admin123)"
   ],
-  "success_rate": {"backend": "100% (31/31)", "frontend": "100%"},
-  "test_credentials": "admin@blade-academy.fr / admin123 (matches /app/memory/test_credentials.md and seeded on startup).",
-  "seed_data_creation": "Tests create their own data with TEST_/DOSS- prefixes and delete after. Pre-existing 237 CPF factures (889 480 € total) in DB are preserved. Initial DB state: 0 sessions / 0 apprenants / 237 factures-cpf — restored after run.",
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% (E2E flow PASS: login→onboarding→kanban→avancer×4→regle→archives→search)"},
+  "test_credentials": "admin@blade-academy.fr / admin123",
+  "seed_data_creation": "Tests use TEST_ prefix and clean up via DELETE in the same test. One TEST_E2E_xxx dossier was created during the frontend E2E run and archived to /archives (visible under search 'TEST_'). Safe to ignore or delete manually.",
   "retest_needed": false,
   "main_agent_can_self_test": true,
-  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_blade_academy.py -v. Note: TestEdofGroupement may fail with sessions_creees=0 if a previous run left 'Formation Test EDOF — juillet/août 2025' sessions in DB — cleanup snippet: delete sessions with nom containing 'Formation Test EDOF' before re-running. Frontend data-testid hooks confirmed: login-submit, view-list-btn, edof-groupement-mois, edof-groupement-exact. The 'Planification' column on /sessions Kanban renders as 'En planification' in text — keep that in mind when grepping text.",
-  "rca of the issue": "N/A — no functional issues. Two test-side adjustments made during iteration: (1) classer response uses 'classes' key (not 'apprenants_concernes'); (2) fusion endpoint expects 'apprenant_ids' not 'ids'; (3) apprenant doc nom is 'nom_fichier' not 'nom'. Tests updated accordingly — backend behavior is correct."
+  "context_for_next_testing_agent": "All new /api/dossiers* endpoints fully tested in /app/backend/tests/test_dossiers.py. Existing CRM endpoints regression-covered (sessions/apprenants/formateurs/entreprises/financeurs/lieux). To rerun: `pytest /app/backend/tests/test_dossiers.py -v`. Frontend uses these data-testids: nav-{kanban,onboarding,actions,archives}, onboarding-input-{nom,prenom,naissance,telephone,adresse,email,financeur-nom,formation,notes}, onboarding-select-{formateur,financeur}, onboarding-submit, kanban-column-{status}, kanban-card-{id}, search-dossiers-input, closed-row-{id}, actions-search, action-card-{id}.",
+  "rca of the issue": "No bug to investigate. Only one minor UX inconsistency (native date input on Onboarding) and one performance hint (denormalize formateur_nom). Neither blocks the feature."
 }

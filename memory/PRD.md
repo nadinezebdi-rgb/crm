@@ -1,166 +1,49 @@
-# Blade Academy CRM — Product Requirements Document
-(ex-FormaPro — rebrandé Blade Academy le 11 juin 2026)
+# Blade Academy CRM — PRD
 
-## Original Problem Statement
-Plateforme web complète de gestion d'organisme de formation (français) couvrant le cycle de vie d'une formation : prospection commerciale → planification → conformité Qualiopi & BPF → gestion apprenants/formateurs → délivrance des attestations. Trois profils : admins/gestionnaires, formateurs (internes/externes), apprenants & entreprises clientes.
+## Problème initial
+Le CRM Blade Academy existant (https://github.com/nadinezebdi-rgb/crm) doit être conservé et ENRICHI avec un module de pilotage des dossiers stagiaires (workflow Kanban + Onboarding rapide + Archive intelligente), sans casser l'existant.
 
-## User Personas
-- **Admin / Gestionnaire** d'organisme de formation — pilote l'activité, suit les sessions, génère les documents Qualiopi, exporte le BPF.
-- **Formateur** (interne / externe) — accède à ses sessions, documents, émargements.
-- **Apprenant** — consulte programme, documents et évaluations (portail public en P1).
-- **Entreprise cliente** — accède à l'espace entreprise pour conventions/factures (P1).
+## Choix utilisateur (itération 2)
+- Garder TOUT l'existant (sessions, apprenants, formateurs, etc.) du repo Blade Academy
+- Ajouter par-dessus : sidebar 2 zones, Tableau de Bord Kanban, Onboarding rapide, Dossiers Clôturés
+- Auth existante (JWT + Emergent Google) conservée
+- Upload réel de fichiers (stockage disque dans /app/backend/uploads_dossiers/)
 
 ## Architecture
-- **Backend**: FastAPI monolith (`/app/backend/server.py`) + MongoDB (motor). Auth JWT + Emergent Google OAuth.
-- **Frontend**: React 19 + react-router 7, Tailwind + shadcn UI, Phosphor icons, Recharts. Fonts Cabinet Grotesk (titres) + IBM Plex Sans (corps).
-- **Doc gen**: ReportLab PDF (8 types).
-- **Deployment**: supervisor (backend:8001, frontend:3000), accessible via REACT_APP_BACKEND_URL.
+- **Backend** : FastAPI + MongoDB. Code existant inchangé, ajout de `routes/dossiers.py` (nouvelle collection `dossiers` + `dossier_documents`).
+- **Frontend** : React 19. Layout existant modifié pour 4 zones (Actif / Données / Historique / Config). 4 nouvelles pages.
 
-## Tech Choices
-- Auth: JWT (HS256, 8h access + 7d refresh, httpOnly cookies) + Emergent OAuth (`auth.emergentagent.com` → `/api/auth/emergent/session`).
-- DB: MongoDB, custom string IDs (`user_id`, `id`), all ISO datetime strings.
-- Design: **Rebrand Blade Academy (11 juin 2026)** — thème clair, sidebar navy #0B1726, accent cyan Blade (#4FC0EE→#0E7FB6, palette tailwind `brand`), logo rond "Blade." (`/public/blade-logo.png`, récupéré depuis blade-academy.fr), login hero navy style site vitrine (typographie bold uppercase, "SANS LIMITES."), favicon + titre "Blade Academy — Gestion de formation". ORG_NAME backend par défaut = "Blade Academy".
+## Workflow Kanban
+Statuts : `devis_attente` → `devis_valide` → `en_formation` → `fin_formation` → `facture` → `regle` (archive auto).
+Dates auto-renseignées :
+- `en_formation` → `date_debut_formation`
+- `fin_formation` → `date_fin_formation`
+- `regle` → `date_cloture` + sortie du Kanban
 
-## Implemented (v1.0 — June 8 2026)
-- Authentication: JWT login/register/logout/me/refresh + Emergent Google OAuth callback.
-- **Sessions module** (cœur): Kanban 5 colonnes (brouillons/planification/planifiée/terminée/archivée) + Liste, filtres (search, type d'action), création guidée 4 étapes, fiche 4 onglets (Progression Qualiopi avec 8 checks, Paramètres, Gestion docs, Portail apprenants mock).
-- **Données** (référentiel): CRUD complet Apprenants, Formateurs (interne/externe), Entreprises clientes, Financeurs (OPCO/CPF/…), Lieux (présentiel/distanciel).
-- **Dashboard**: KPIs (sessions actives, apprenants, CA, marge, progression moyenne) + chart répartition Kanban + calendrier des sessions.
-- **Production documentaire**: génération PDF de 8 types de documents (convention, contrat, convocation, attestation, facture, émargement, programme, évaluation) via ReportLab.
-- **Paramètres**: 8 sections (identité, marque, intégrations mock, Qualiopi/BPF, modèles doc/email, notifications, accessibilité EDOF).
-- Seed automatique (3 entreprises, 3 formateurs, 5 apprenants, 3 financeurs, 3 lieux, 4 sessions de démo).
+## Routes NOUVELLES (toutes auth requise)
+- `POST /api/dossiers` — Onboarding
+- `GET /api/dossiers/active` — Kanban
+- `GET /api/dossiers/closed?q=…` — Archives (recherche multi-champs)
+- `GET/PUT/DELETE /api/dossiers/{id}`
+- `PATCH /api/dossiers/{id}/status`
+- `POST /api/dossiers/{id}/documents` (multipart)
+- `GET /api/dossiers/{id}/documents`
+- `GET /api/dossier-documents/{id}/download`
+- `DELETE /api/dossier-documents/{id}`
 
-## Rebrand Blade Academy (v1.1 — 11 juin 2026)
-- Identité visuelle reprise de https://blade-academy.fr/ (choix utilisateur : thème clair + sidebar navy + accent cyan).
-- Fichiers touchés : `tailwind.config.js` (palettes `brand` + `navy`), `index.css` (vars --brand, --primary, .blade-hero), `Layout.jsx`, `Login.jsx`, `Register.jsx`, `index.html`, remplacement global `blue-*` → `brand-*` dans pages/, `server.py` (ORG_NAME, titres API, pied de page PDF).
-- DB : `users.organisme` → "Blade Academy", admin renommé "Admin Blade Academy". **Credentials migrés (11 juin) : admin@blade-academy.fr / admin123** (migration idempotente au démarrage dans `seed()` — fonctionne aussi en production au prochain redéploiement ; l'ancien admin@formapro.fr n'existe plus). Données démo nettoyées (emails formateurs, lieu "Centre Blade Academy Paris"). `.env` backend : ADMIN_EMAIL/ADMIN_NAME/ORG_NAME mis à jour (DB_NAME inchangé).
-- Sous-domaine : l'utilisateur veut crm.blade-academy.fr (DNS CNAME vers déploiement Emergent, site principal reste sur Webflow) — instructions données, action côté utilisateur.
+## Implémenté (13 Jan 2026)
+- ✅ Restauration du repo Blade Academy GitHub
+- ✅ Backend `routes/dossiers.py` : CRUD + workflow + upload local
+- ✅ Sidebar 4 zones (Espace Actif bleu / Données / Espace Historique ambre / Config)
+- ✅ Page `/kanban` — 5 colonnes drag & drop + boutons Avancer / Marquer réglé
+- ✅ Page `/onboarding` — formulaire rapide (14 champs)
+- ✅ Page `/actions` — fiches individuelles + drawer édition + upload docs
+- ✅ Page `/archives` — recherche ultra-rapide + drawer readonly
+- ✅ Composant `DossierDrawer` partagé (mode edit / readonly)
+- ✅ Tests : 26/26 pytest backend + E2E frontend complet (login → onboarding → kanban → avancer×4 → réglé → archives → recherche)
 
-## Infos légales organisme + PDF (v1.2 — 11 juin 2026)
-- Collection `organisme_settings` (doc singleton, clé "organisme"), pré-remplie au seed avec les vraies infos légales de Blade Academy (source : blade-academy.fr/mentions-legales) : SAS, SIRET 984 617 654 00012, RCS Soissons, APE 85.59A, TVA FR50984617654, NDA 32020170602 (Hauts-de-France), Qualiopi N° 338511-1 (CERTIF OPAC), 26 Rue Jules Lefebvre 02130 Fère-en-Tardenois, blade.academy@hotmail.com, +33 (0)6 51 21 84 87.
-- Endpoints : `GET/PUT /api/parametres/organisme` (auth requis).
-- PDF rebrandés : bandeau navy #0B1726 + liseré cyan, coordonnées en en-tête, pied de page légal complet (SIRET/RCS/TVA, mention NDA réglementaire, N° Qualiopi + certificateur). `build_pdf(title, lines, org)`.
-- Paramètres > "Identité de l'organisme" : section fonctionnelle (16 champs, GET au chargement, PUT à l'enregistrement, data-testid `org-{champ}` + `org-save-btn`).
-- Testé : login, GET/PUT, 4 types de PDF générés (HTTP 200), extraction texte PDF vérifiée (8 mentions légales présentes), UI vérifiée par screenshot.
-
-## Backlog (Next Priorities)
-### P0 (Next iteration)
-- Module **Gestion commerciale** : pipeline d'opportunités (CRM), enrôlements, archivage opportunités.
-- Génération PDF avancée (templates personnalisables, en-tête organisme, signature électronique mock → vraie intégration Yousign).
-- Filtres avancés Sessions : admin, formateur, dates, programme, catégorie, niveau de progression.
-- Portail apprenants public (route `/portail/:id`) avec consultation programme, documents, évaluations.
-
-### P1
-- Module **Bibliothèque** : programmes réutilisables, évaluations, archivage.
-- Module **E-learning** : cours, activités, import SCORM réel.
-- Import/Export Excel des entités (xlsx).
-- Champs personnalisables (custom fields) sur entités principales.
-- Multi-langue contenu + multi-fuseaux.
-- Notifications temps réel + centre de notifications fonctionnel.
-
-### P2
-- Espace formateur / espace entreprise dédiés (multi-portails).
-- Catalogue en ligne public + formulaire d'inscription individuelle.
-- BPF export officiel CERFA.
-- Intégration signature électronique réelle (Yousign/DocuSign).
-- Intégration emails transactionnels (Resend/SendGrid).
-- Freemium + abonnement Stripe (free / pro / premium).
-- Multi-organismes (tenant isolation) pour SaaS multi-clients.
-
-## Documents PDF juridiques complets (v1.3 — 11 juin 2026)
-- Nouveau module `/app/backend/documents.py` : moteur de rendu par blocs (titres avec liseré cyan, paragraphes avec retour à la ligne auto, multi-pages avec pied de page légal sur chaque page, blocs de signature double cadre).
-- 8 modèles enrichis conformes Code du travail :
-  - **Convention** (L.6353-1/2) : 9 articles — objet/nature/durée, lieu, effectif (stagiaires listés), moyens pédagogiques, suivi/sanction, prix HT/TVA/TTC, règlement (D.441-5), dédit/annulation (>10j : 0%, <10j : 50%, abandon : 100%), litiges + double signature.
-  - **Contrat** (L.6353-3 à 7) : rétractation 10 jours, acompte max 30%, interruption prorata temporis.
-  - **Convocation** : horaires, consignes, référent handicap, stagiaires listés.
-  - **Attestation** (L.6353-1 al.2) : nature, durée, objectifs, résultats des acquis.
-  - **Facture** : n° FAC-{code}, HT/TVA 20%/TTC, échéance 30j, pénalités + indemnité 40 €, subrogation financeur.
-  - **Émargement** : lignes matin/après-midi par stagiaire, contreseing formateur.
-  - **Programme** : objectifs, prérequis, méthodes, évaluation, accessibilité handicap, tarif, délai d'accès (Qualiopi).
-  - **Évaluation à chaud** : 6 critères échelle 1-5, recommandation, commentaires.
-- Les documents résolvent les entités liées (lieu, formateurs, apprenants, entreprise, financeur) pour un contenu nominatif.
-- ⚠️ TVA 20% appliquée par défaut — si l'organisme est exonéré (art. 261-4-4°-a CGI), adapter `_prix_lignes` dans documents.py.
-- Testé : 8 PDF HTTP 200, mots-clés juridiques vérifiés par extraction, mise en page validée visuellement (analyse PDF).
-
-## Import EDOF / CPF (v1.4 — 11 juin 2026)
-- Nouveau module `/app/backend/import_edof.py` : parsing CSV (séparateurs ;/,/tab, encodages utf-8/cp1252/latin-1) et Excel .xlsx (openpyxl), détection automatique des colonnes EDOF standard (mots-clés normalisés sans accents), parsing dates FR (dd/mm/yyyy…) et montants FR ("1 495,00 €").
-- Endpoints : `POST /api/import/edof/preview` (upload multipart → colonnes + mapping auto + lignes) et `POST /api/import/edof/commit` (rows + mapping + create_sessions).
-- Logique commit : dédoublonnage apprenants par email (sinon nom+prénom, insensible casse), notes "Importé depuis EDOF… Dossier CPF n° X", lignes annulées/refusées ignorées (reportées), regroupement par (formation, date début, date fin) → création sessions (statut auto : terminee si passée / planifiee / brouillon, prix_ht = somme des dossiers, financeur CPF find-or-create type_financeur=cpf, apprenants rattachés). Ré-import idempotent (sessions complétées, pas de doublons).
-- Frontend : `ImportEdofDialog.jsx` (3 étapes : fichier → mappage corrigeable + aperçu 5 lignes + case "créer les sessions" → résultat avec stats et lignes ignorées). Bouton "Importer EDOF (CPF)" sur la page Apprenants via prop `extraActions` ajoutée à CrudPage.
-- data-testid : edof-import-btn, edof-file-input, edof-mapping-{champ}, edof-create-sessions, edof-commit-btn, edof-result, edof-close-btn.
-- Testé e2e : CSV cp1252 + XLSX, mapping auto 10/10, commit (4 apprenants, 3 sessions, 1 annulé ignoré, doublon email fusionné), ré-import idempotent, UI vérifiée par screenshots (fix overflow modal min-w-0). Données de test nettoyées.
-
-## Module Facturation CPF (v1.5 — 11 juin 2026)
-- Contexte : l'utilisateur a fourni son export EDOF **Factures** réel (237 factures 2025, toutes "Versé", 889 480 €) — fichier sans données nominatives (pas de nom/email/formation), donc inutilisable pour créer des stagiaires (l'export **Dossiers** EDOF reste nécessaire pour ça).
-- Backend : `map_facture_columns()` dans import_edof.py (détection NUMERO_DOSSIER, NUMERO_FACTURE, TYPE, DATE_EMISSION, MONTANT_REGLEMENT, STATUT_REGLEMENT, DATE_REGLEMENT, EN CONTROLE O/N). Endpoints : `POST /api/factures-cpf/import` (upload direct, dédoublonnage par n° facture, ré-import = mise à jour), `GET /api/factures-cpf?q=` (recherche n° dossier/facture, lien stagiaire via `apprenants.dossier_cpf`), `GET /api/factures-cpf/stats` (nb, total, versé, attente, par_mois).
-- Champ `dossier_cpf` ajouté à ApprenantPayload + renseigné par l'import EDOF Dossiers → les factures se relient automatiquement aux stagiaires une fois l'export Dossiers importé.
-- Frontend : page `/facturation` (Facturation.jsx) — 4 KPIs, graphique Recharts versé/mois, tableau (n° facture, dossier, stagiaire, montant, badge statut, dates, contrôle), recherche, bouton import direct. Entrée "Facturation CPF" dans la sidebar (groupe Pilotage). Champ "N° dossier CPF" ajouté au CRUD Apprenants.
-- Testé avec le vrai fichier : 237 importées / ré-import 237 maj 0 doublon / stats exactes / recherche OK / UI vérifiée par screenshot. Les 237 factures réelles sont en base de PREVIEW — l'utilisateur devra réimporter le fichier en production après redéploiement.
-
-## Pagination 20/50/100 (v1.6 — 11 juin 2026)
-- Composant réutilisable `Pagination.jsx` (sélecteur 20/50/100 par page, navigation précédent/suivant, compteur "X–Y sur N"). Pagination côté client.
-- Intégré dans `CrudPage.jsx` (toutes les pages Données : Apprenants, Formateurs, Entreprises, Financeurs, Lieux — reset page à la recherche) et `Facturation.jsx` (tableau des 237 factures).
-- data-testid : `{testid}-pagination(-size/-info/-prev/-next)`, `factures-pagination*`.
-- Testé : Facturation 1–20 sur 237 → 100/page → page 2 (101–200), Apprenants 1–5 sur 5. ⚠️ Leçon : ne pas lancer plusieurs search_replace en parallèle sur le MÊME fichier (conflit d'écriture constaté et corrigé).
-
-## Qualité des données — doublons (v1.7 — 11 juin 2026)
-- Endpoint `GET /api/qualite/doublons` : apprenants groupés par email identique et par nom+prénom identique (dédupliqué si même email déjà signalé), factures CPF groupées par n° de facture identique, + info dossiers CPF multi-factures (souvent normal).
-- UI : section "Qualité des données" dans Paramètres (bouton "Analyser les doublons", résultat vert si propre / blocs ambre détaillés sinon). data-testid : doublons-analyse-btn, doublons-result, doublons-aucun.
-- Vérifié en préversion : 0 doublon (5 apprenants seed, 237 factures réelles). Détection testée par insertion/suppression de doublons artificiels (email + n° facture détectés).
-- Rappel donné à l'utilisateur : recherche déjà présente partout (barre globale topbar → sessions, champ recherche sur chaque page de liste, recherche factures par n° dossier/facture).
-
-## Fiche apprenant + documents + fusion (v1.8 — 11 juin 2026)
-- **Stockage de fichiers persistant** : intégration Emergent Object Storage (`/app/backend/storage.py`, httpx async, init avec EMERGENT_LLM_KEY ajoutée au backend/.env, retry sur 403, préfixe `blade-academy-crm/`). Persiste entre déploiements.
-- **Documents apprenants** (collection `apprenant_documents`) : 11 catégories (certificat ExAssess, convocation certification, facture, attestation d'assiduité, relevé de connexion, contrat, émargement présentiel, DPC, convention, suivi des communications, autre). Endpoints : `GET/POST /api/apprenants/{id}/documents` (upload multipart, max 10 Mo, catégorie validée), `GET /api/documents-apprenants/{doc_id}/download` (inline, auth cookie), `DELETE` (soft delete).
-- **Fiche apprenant** : nouvelle page `/apprenants/:id` (ApprenantDetail.jsx) — en-tête (avatar initiales, email, tél, badge dossier CPF, compteur docs), sessions suivies (liens), grille des 11 catégories avec upload/téléchargement/suppression par fichier. Lignes des listes CrudPage cliquables via prop `rowHref` (boutons edit/delete avec stopPropagation).
-- **Fusion de doublons** : `POST /api/apprenants/fusionner {apprenant_ids}` — conserve la fiche la plus ancienne, hérite des champs manquants (email, tél, dossier_cpf, adresse, date naissance, entreprise), concatène les notes, réaffecte sessions + documents, supprime les doublons. Boutons "Fusionner" (ambre) sur chaque groupe de doublons dans Paramètres > Qualité des données.
-- Testé e2e : upload/download/delete réels via Object Storage (contenu vérifié), validation catégorie (400), fusion complète (dossier CPF hérité, 1 session + 1 doc réaffectés, doublon supprimé), UI fiche apprenant + upload via navigateur vérifiés. Données de test nettoyées.
-
-## Classement automatique des PDF dans les fiches (v1.9 — 11 juin 2026)
-- `POST /api/documents/session/{id}/{doc_type}/classer` : génère le PDF (factorisé dans `_generer_pdf_session`), l'envoie une fois vers l'Object Storage (`blade-academy-crm/sessions/{sid}/`), puis crée un enregistrement `apprenant_documents` pour CHAQUE stagiaire de la session (même storage_path partagé, soft delete indépendant). 400 si aucun stagiaire.
-- Mapping doc_type → catégorie fiche : convention→convention, contrat→contrat, convocation→convocation_certification, attestation→attestation_assiduite, facture→facture, emargement→emargement, programme/evaluation→autre (`DOC_TYPE_TO_CATEGORIE`).
-- UI : bouton "Classer dans les fiches" (cyan, icône FolderSimplePlus, data-testid `classer-{type}`) sous "Générer le PDF" sur chacune des 8 cartes de l'onglet Gestion de SessionDetail. Toast "classé dans N fiche(s)".
-- Testé : classement convention → visible sur la fiche du stagiaire (catégorie convention) → téléchargement HTTP 200, PDF valide. UI vérifiée par screenshot. Docs de test nettoyés.
-
-## CA réel + purge des données de démo (v2.0 — 11 juin 2026)
-- Contexte : en production l'utilisateur a importé 531 apprenants + 237 factures CPF mais le dashboard montrait le CA des sessions de démo (6 900 €).
-- `GET /api/dashboard/stats` : CA réalisé = encaissements CPF réels (factures versées) + prix des sessions hors financement CPF (anti double-comptage via financeur type cpf). Nouveau champ `ca_cpf`. Marge calculée sur les sessions uniquement. KPI frontend : hint "dont X € CPF encaissés" quand ca_cpf > 0.
-- `POST /api/parametres/purge-demo` : supprime les données seed (4 sessions, 5 apprenants, 3 formateurs, 3 entreprises, 2 financeurs OPCO, 3 lieux — le financeur CPF est conservé car utilisé par l'import EDOF). Pose un drapeau `meta.demo_purged` que `seed()` respecte (pas de réinsertion au redémarrage/redéploiement). Bouton rouge "Supprimer les données de démonstration" dans Paramètres > Qualité des données (data-testid purge-demo-btn).
-- Testé : avant purge CA 896 380 (6 900 démo + 889 480 CPF) → après purge CA 889 480, 0 démo, pas de réinsertion après restart, login admin intact. ⚠️ La base PREVIEW est maintenant purgée de la démo (vide hors factures CPF) — état attendu.
-- Action utilisateur en production : redéployer PUIS cliquer "Supprimer les données de démonstration".
-
-## Sessions mensuelles auto-générées depuis EDOF (v2.1 — 11 juin 2026)
-- Demande utilisateur : « il faut que tu analyses les exports et que tu essaies de faire des sessions par mois si possible ».
-- Backend : `EdofCommitPayload` reçoit un paramètre `groupement: Literal["mois","exact"] = "mois"`. Quand `mois` : les dossiers EDOF sont regroupés par (formation, YYYY-MM de la date début) → une session distincte est créée par mois avec nom auto « Formation — juillet 2025 ». Les bornes (date_debut/fin) du groupe = min des départs / max des fins. Ré-import idempotent (match par nom uniquement en mode mois). Quand `exact` : ancien comportement (clé = formation + date_debut + date_fin).
-- Frontend : `ImportEdofDialog.jsx` envoie le paramètre `groupement` et expose un toggle radio "Par mois (recommandé) / Par dates exactes" à l'étape 2 quand "créer les sessions" est coché. data-testid : `edof-groupement-mois`, `edof-groupement-exact`, `edof-groupement-block`.
-- Testé (curl + testing_agent) : 5 stagiaires sur 2 formations × 2 mois → 2 sessions distinctes nommées « ... — juillet 2025 » et « ... — août 2025 », statut auto (terminee/planifiee/brouillon). Mode exact crée 4 sessions distinctes (1 par triplet exact). Ré-import → sessions_maj sans doublon.
-
-## Refactoring modulaire du backend (v2.2 — 11 juin 2026)
-- `server.py` passé de **1480 lignes monolithique** à **70 lignes (entry point mince)**.
-- Nouvelle arborescence :
-  - `/app/backend/deps.py` (115 l.) — DB, JWT, helpers, get_current_user
-  - `/app/backend/models.py` (189 l.) — Pydantic payloads + constantes (MOIS_FR, DOC_TITLES, DOC_TYPE_TO_CATEGORIE, CATEGORIES_DOCUMENTS_APPRENANT, DEFAULT_ORGANISME)
-  - `/app/backend/seed.py` (162 l.) — migration rebrand + admin + démo
-  - `/app/backend/routes/auth.py` (118 l.)
-  - `/app/backend/routes/crud.py` (62 l.) — CRUD générique x5 entités
-  - `/app/backend/routes/sessions.py` (134 l.) — sessions + progression
-  - `/app/backend/routes/dashboard.py` (68 l.)
-  - `/app/backend/routes/parametres.py` (47 l.) — organisme + purge_demo
-  - `/app/backend/routes/imports.py` (267 l.) — EDOF Dossiers + Factures CPF
-  - `/app/backend/routes/documents.py` (249 l.) — PDF, classer, docs apprenants, fusion, qualité
-- ZERO changement de comportement métier. Tous les endpoints identiques. Testing_agent : 31/31 backend, 100% frontend, aucune régression.
-- Bénéfice : chaque module < 270 lignes, séparation domaine claire, hot-reload plus rapide, code prêt pour scaling.
-
-## Sessions auto-générées depuis Factures CPF (v2.3 — 11 juin 2026)
-- Demande utilisateur : « generer sessions par mois depuis les factures ».
-- Nouveau endpoint `POST /api/sessions/generer-depuis-factures-cpf` (`/app/backend/routes/imports.py`) : regroupe TOUTES les factures CPF par mois (YYYY-MM de `date_emission`) et crée/met à jour une session synthétique par mois. Nom auto « CPF — &lt;mois&gt; &lt;année&gt; », code interne `CPF-YYYY-MM`, statut auto (terminee si mois passé), `date_debut`=01 / `date_fin`=dernier jour (calendar.monthrange → gère février bissextile), `prix_ht`=somme des montants du mois, `financeur_id` rattaché au CPF (find-or-create), `apprenants`=ids des apprenants dont `dossier_cpf` matche un n° de dossier de la facture (mapping idempotent).
-- Idempotent : find-or-update sur `session.nom` → ré-exécution = sessions_maj sans doublon.
-- Frontend : bouton « Générer sessions par mois » (data-testid `factures-generer-sessions-btn`) sur la page Facturation, à côté de l'import. Confirmation native + toast résultat.
-- Testé sur 237 factures preview → 8 sessions générées (jan/mars/jul/aoû/sep/oct/nov/déc 2025) pour un total exact de 889 480 €. 36/36 pytest (incl. 5 nouveaux tests `TestGenererSessionsDepuisFacturesCPF`).
-
-## Endpoints (résumé)
-- `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`, `POST /api/auth/emergent/session`
-- `GET|POST|PUT|DELETE /api/{apprenants,formateurs,entreprises,financeurs,lieux}[/{id}]`
-- `GET|POST|PUT|DELETE /api/sessions[/{id}]`, `PATCH /api/sessions/{id}/{statut,progression}`
-- `GET /api/dashboard/{stats,calendar}`
-- `GET /api/documents/session/{id}/{type}` → PDF inline
+## Backlog (suggestions du testing agent)
+- Dénormaliser `formateur_nom` sur le dossier pour accélérer `/dossiers/closed?q=`
+- Remplacer le date input HTML5 par le composant Calendar shadcn (cohérence UX)
+- Limiter taille/MIME des uploads (DoS hardening)
+- Pagination des `/dossiers/*` lorsque > 5000 dossiers

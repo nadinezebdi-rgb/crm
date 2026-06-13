@@ -14,6 +14,7 @@ import {
   Bell,
   SignOut,
   CaretRight,
+  Archive,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -26,15 +27,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const NAV = [
-  { to: "/dashboard", label: "Accueil", icon: House, testid: "nav-dashboard" },
-  { to: "/sessions", label: "Sessions", icon: Kanban, testid: "nav-sessions" },
-  { to: "/facturation", label: "Facturation CPF", icon: Receipt, testid: "nav-facturation" },
-  { to: "/apprenants", label: "Apprenants", icon: Users, testid: "nav-apprenants" },
-  { to: "/formateurs", label: "Formateurs", icon: ChalkboardTeacher, testid: "nav-formateurs" },
-  { to: "/entreprises", label: "Entreprises", icon: Buildings, testid: "nav-entreprises" },
-  { to: "/financeurs", label: "Financeurs", icon: Bank, testid: "nav-financeurs" },
-  { to: "/lieux", label: "Lieux", icon: MapPin, testid: "nav-lieux" },
-  { to: "/parametres", label: "Paramètres", icon: Gear, testid: "nav-parametres" },
+  { to: "/dashboard", label: "Accueil", icon: House, testid: "nav-dashboard", zone: "actif" },
+  { to: "/kanban", label: "Tableau de Bord", icon: Kanban, testid: "nav-kanban", zone: "actif" },
+  { to: "/onboarding", label: "Onboarding", icon: Users, testid: "nav-onboarding", zone: "actif" },
+  { to: "/actions", label: "Actions de Formation", icon: ChalkboardTeacher, testid: "nav-actions", zone: "actif" },
+  { to: "/sessions", label: "Sessions", icon: Kanban, testid: "nav-sessions", zone: "data" },
+  { to: "/facturation", label: "Facturation CPF", icon: Receipt, testid: "nav-facturation", zone: "data" },
+  { to: "/apprenants", label: "Apprenants", icon: Users, testid: "nav-apprenants", zone: "data" },
+  { to: "/formateurs", label: "Formateurs", icon: ChalkboardTeacher, testid: "nav-formateurs", zone: "data" },
+  { to: "/entreprises", label: "Entreprises", icon: Buildings, testid: "nav-entreprises", zone: "data" },
+  { to: "/financeurs", label: "Financeurs", icon: Bank, testid: "nav-financeurs", zone: "data" },
+  { to: "/lieux", label: "Lieux", icon: MapPin, testid: "nav-lieux", zone: "data" },
+  { to: "/archives", label: "Dossiers Clôturés", icon: Archive, testid: "nav-archives", zone: "historique" },
+  { to: "/parametres", label: "Paramètres", icon: Gear, testid: "nav-parametres", zone: "config" },
 ];
 
 export default function Layout() {
@@ -58,17 +63,21 @@ export default function Layout() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-5 space-y-0.5">
-          <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Pilotage</div>
-          {NAV.slice(0, 3).map((item) => (
+        <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
+          <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-brand-400 font-bold">Espace Actif</div>
+          {NAV.filter((n) => n.zone === "actif").map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Données</div>
-          {NAV.slice(3, 8).map((item) => (
+          {NAV.filter((n) => n.zone === "data").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-amber-400 font-bold">Espace Historique</div>
+          {NAV.filter((n) => n.zone === "historique").map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Config</div>
-          {NAV.slice(8).map((item) => (
+          {NAV.filter((n) => n.zone === "config").map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
         </nav>

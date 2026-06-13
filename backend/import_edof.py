@@ -215,5 +215,4 @@ def detect_niveau_anglais(formation):
     if "anglais" not in f.lower():
         return None
     m = re.search(r"\b([abcABC][12])\b", f)
-        return m.group(1).upper() if m else None
-        
+    return m.group(1).upper() if m else None
