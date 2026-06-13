@@ -1,0 +1,33 @@
+{
+  "summary": "Itération 1: testing complet backend + frontend du CRM Formation. 12/12 tests backend pytest réussis. Tous les flows E2E frontend validés (création formateur, onboarding stagiaire, workflow Kanban complet devis_attente → regle, archivage automatique dans /archives, recherche). Aucun bug critique identifié.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/stagiaires/closed?q=", "issue": "Logique de recherche fait deux requêtes Mongo (une avec $or + une 'all_closed' pour filtrer côté Python sur formateur_nom). Fonctionnel mais coûteux à grande échelle — envisager dénormaliser formateur_nom dans le doc stagiaire."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard Kanban", "issues": ["Sur viewport <1280px les 5 colonnes (w-80=320px chacune) débordent et nécessitent un scroll horizontal — comportement attendu mais peut surprendre. Acceptable."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_crm_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L243-269: la recherche /stagiaires/closed?q= refait un find complet de tous les dossiers réglés en plus du find filtré, puis recalcule formateur_nom pour chacun afin de matcher côté Python. Fonctionne mais O(N) à chaque requête. Si volumétrie augmente, stocker formateur_nom dénormalisé OU faire un $lookup MongoDB.",
+    "server.py: tous les modèles utilisent UUID en string et excluent _id correctement — bon pattern.",
+    "server.py L412: dict comprehension async sur cursor — propre. Utilisation correcte de motor.",
+    "Pas d'authentification (par choix utilisateur), donc toutes les routes publiques. À sécuriser en production.",
+    "Dashboard.jsx, Onboarding.jsx, Formateurs.jsx: data-testid bien posés sur tous éléments interactifs critiques."
+  ],
+  "updated_files": ["/app/backend/tests/test_crm_api.py"],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (8/8 flows)"},
+  "test_credentials": "N/A — pas d'authentification",
+  "seed_data_creation": "Données de test créées avec préfixe TEST_ via les tests pytest (cleanup automatique via fixture session). Côté frontend: 1 formateur 'Sophie E2ETest' + 1 stagiaire 'Pierre DURAND' (archivé dans /archives après E2E flow). À nettoyer manuellement si besoin.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Première itération. Backend 100% OK. Frontend E2E OK. Si nouvelles features ajoutées (auth, autres workflows), réutiliser test_crm_api.py comme base de régression. Le préfixe TEST_ est utilisé pour identifier données de test mais le cleanup auto de la fixture pytest dépend de l'ordre — vérifier qu'il n'y ait pas de fuite après plusieurs runs.",
+  "rca of the issue": "Aucun bug à investiguer cette itération."
+}
