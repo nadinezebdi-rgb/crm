@@ -59,6 +59,10 @@ class ApprenantPayload(BaseModel):
     adresse: Optional[str] = None
     dossier_cpf: Optional[str] = None
     notes: Optional[str] = None
+    formation: Optional[str] = None
+    niveau: Optional[str] = None
+    date_debut: Optional[str] = None
+    date_fin: Optional[str] = None
 
 
 class FormateurPayload(BaseModel):
