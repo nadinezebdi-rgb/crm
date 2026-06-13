@@ -6,7 +6,7 @@ from typing import Dict
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Response
 from fastapi.responses import StreamingResponse
 
-from deps import db, now_utc, new_id, get_current_user
+import deps
 from models import (
     FusionPayload,
     CATEGORIES_DOCUMENTS_APPRENANT,
@@ -22,8 +22,8 @@ router = APIRouter()
 
 # ---------------- Documents apprenants ----------------
 @router.get("/apprenants/{apprenant_id}/documents")
-async def list_documents_apprenant(apprenant_id: str, user: dict = Depends(get_current_user)):
-    return await db.apprenant_documents.find(
+async def list_documents_apprenant(apprenant_id: str, user: dict = Depends(deps.get_current_user)):
+    return await deps.db.apprenant_documents.find(
         {"apprenant_id": apprenant_id, "is_deleted": False}, {"_id": 0}
     ).sort("uploaded_at", -1).to_list(500)
 
@@ -33,11 +33,11 @@ async def upload_document_apprenant(
     apprenant_id: str,
     categorie: str = Form(...),
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(deps.get_current_user),
 ):
     if categorie not in CATEGORIES_DOCUMENTS_APPRENANT:
         raise HTTPException(status_code=400, detail="Catégorie de document invalide")
-    if not await db.apprenants.find_one({"id": apprenant_id}, {"_id": 1}):
+    if not await deps.db.apprenants.find_one({"id": apprenant_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Apprenant introuvable")
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
@@ -52,7 +52,7 @@ async def upload_document_apprenant(
         logger.exception("Échec de l'envoi vers le stockage d'objets")
         raise HTTPException(status_code=502, detail="Stockage indisponible, réessayez dans un instant")
     doc = {
-        "id": new_id(),
+        "id": deps.new_id(),
         "apprenant_id": apprenant_id,
         "categorie": categorie,
         "nom_fichier": file.filename or "document",
@@ -60,15 +60,15 @@ async def upload_document_apprenant(
         "taille": result.get("size", len(data)),
         "storage_path": result["path"],
         "is_deleted": False,
-        "uploaded_at": now_utc().isoformat(),
+        "uploaded_at": deps.now_utc().isoformat(),
     }
-    await db.apprenant_documents.insert_one(dict(doc))
+    await deps.db.apprenant_documents.insert_one(dict(doc))
     return doc
 
 
 @router.get("/documents-apprenants/{doc_id}/download")
-async def download_document_apprenant(doc_id: str, user: dict = Depends(get_current_user)):
-    doc = await db.apprenant_documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+async def download_document_apprenant(doc_id: str, user: dict = Depends(deps.get_current_user)):
+    doc = await deps.db.apprenant_documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
     try:
@@ -84,8 +84,8 @@ async def download_document_apprenant(doc_id: str, user: dict = Depends(get_curr
 
 
 @router.delete("/documents-apprenants/{doc_id}")
-async def delete_document_apprenant(doc_id: str, user: dict = Depends(get_current_user)):
-    result = await db.apprenant_documents.update_one({"id": doc_id}, {"$set": {"is_deleted": True}})
+async def delete_document_apprenant(doc_id: str, user: dict = Depends(deps.get_current_user)):
+    result = await deps.db.apprenant_documents.update_one({"id": doc_id}, {"$set": {"is_deleted": True}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Document introuvable")
     return {"ok": True}
@@ -93,17 +93,17 @@ async def delete_document_apprenant(doc_id: str, user: dict = Depends(get_curren
 
 # ---------------- Fusion de fiches apprenants ----------------
 @router.post("/apprenants/fusionner")
-async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(get_current_user)):
+async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(deps.get_current_user)):
     if len(payload.apprenant_ids) < 2:
         raise HTTPException(status_code=400, detail="Au moins deux fiches sont nécessaires pour fusionner")
-    fiches = await db.apprenants.find({"id": {"$in": payload.apprenant_ids}}, {"_id": 0}).to_list(100)
+    fiches = await deps.db.apprenants.find({"id": {"$in": payload.apprenant_ids}}, {"_id": 0}).to_list(100)
     if len(fiches) < 2:
         raise HTTPException(status_code=404, detail="Fiches introuvables")
     fiches.sort(key=lambda f: f.get("created_at") or "")
     cible, doublons = fiches[0], fiches[1:]
     doublon_ids = [d["id"] for d in doublons]
 
-    updates = {"updated_at": now_utc().isoformat()}
+    updates = {"updated_at": deps.now_utc().isoformat()}
     for field in ["email", "telephone", "dossier_cpf", "adresse", "date_naissance", "entreprise_id"]:
         if not cible.get(field):
             for d in doublons:
@@ -113,10 +113,10 @@ async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(get_
     notes_sup = [d["notes"] for d in doublons if d.get("notes") and d["notes"] != cible.get("notes")]
     if notes_sup:
         updates["notes"] = "\n".join([n for n in [cible.get("notes")] + notes_sup if n])
-    await db.apprenants.update_one({"id": cible["id"]}, {"$set": updates})
+    await deps.db.apprenants.update_one({"id": cible["id"]}, {"$set": updates})
 
     sessions_touchees = 0
-    async for s in db.sessions.find({"apprenants": {"$in": doublon_ids}}, {"_id": 0, "id": 1, "apprenants": 1}):
+    async for s in deps.db.sessions.find({"apprenants": {"$in": doublon_ids}}, {"_id": 0, "id": 1, "apprenants": 1}):
         nouveaux = [a for a in s.get("apprenants", []) if a not in doublon_ids]
         if cible["id"] not in nouveaux:
             nouveaux.append(cible["id"])
@@ -125,10 +125,10 @@ async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(get_
         )
         sessions_touchees += 1
 
-    docs_result = await db.apprenant_documents.update_many(
+    docs_result = await deps.db.apprenant_documents.update_many(
         {"apprenant_id": {"$in": doublon_ids}}, {"$set": {"apprenant_id": cible["id"]}}
     )
-    await db.apprenants.delete_many({"id": {"$in": doublon_ids}})
+    await deps.db.apprenants.delete_many({"id": {"$in": doublon_ids}})
 
     return {
         "cible_id": cible["id"],
@@ -140,8 +140,8 @@ async def fusionner_apprenants(payload: FusionPayload, user: dict = Depends(get_
 
 # ---------------- Qualité des données : doublons ----------------
 @router.get("/qualite/doublons")
-async def detect_doublons(user: dict = Depends(get_current_user)):
-    apprenants = await db.apprenants.find(
+async def detect_doublons(user: dict = Depends(deps.get_current_user)):
+    apprenants = await deps.db.apprenants.find(
         {}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "email": 1, "dossier_cpf": 1}
     ).to_list(20000)
 
@@ -161,7 +161,7 @@ async def detect_doublons(user: dict = Depends(get_current_user)):
             if len(emails) > 1 or "" in emails:
                 doublons_nom.append({"cle": f"{p.title()} {n.upper()}".strip(), "apprenants": v})
 
-    factures = await db.factures_cpf.find(
+    factures = await deps.db.factures_cpf.find(
         {}, {"_id": 0, "id": 1, "numero_facture": 1, "numero_dossier": 1, "montant": 1, "date_emission": 1}
     ).to_list(20000)
     by_facture: Dict[str, list] = {}
@@ -198,8 +198,8 @@ async def _generer_pdf_session(session: dict, doc_type: str) -> bytes:
 
 
 @router.get("/documents/session/{session_id}/{doc_type}")
-async def generate_document(session_id: str, doc_type: str, user: dict = Depends(get_current_user)):
-    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+async def generate_document(session_id: str, doc_type: str, user: dict = Depends(deps.get_current_user)):
+    session = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session introuvable")
     if doc_type not in DOC_BUILDERS:
@@ -213,8 +213,8 @@ async def generate_document(session_id: str, doc_type: str, user: dict = Depends
 
 
 @router.post("/documents/session/{session_id}/{doc_type}/classer")
-async def classer_document_session(session_id: str, doc_type: str, user: dict = Depends(get_current_user)):
-    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+async def classer_document_session(session_id: str, doc_type: str, user: dict = Depends(deps.get_current_user)):
+    session = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session introuvable")
     if doc_type not in DOC_BUILDERS:
@@ -233,10 +233,10 @@ async def classer_document_session(session_id: str, doc_type: str, user: dict = 
         raise HTTPException(status_code=502, detail="Stockage indisponible, réessayez dans un instant")
 
     categorie = DOC_TYPE_TO_CATEGORIE[doc_type]
-    now_iso = now_utc().isoformat()
+    now_iso = deps.now_utc().isoformat()
     for aid in apprenant_ids:
-        await db.apprenant_documents.insert_one({
-            "id": new_id(),
+        await deps.db.apprenant_documents.insert_one({
+            "id": deps.new_id(),
             "apprenant_id": aid,
             "categorie": categorie,
             "nom_fichier": nom_fichier,

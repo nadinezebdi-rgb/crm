@@ -3,7 +3,7 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 
-from deps import db, now_utc, new_id, get_current_user
+import deps
 from models import SessionPayload
 
 router = APIRouter()
@@ -43,7 +43,7 @@ async def list_sessions(
     administrateur: Optional[str] = None,
     formateur: Optional[str] = None,
     q: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(deps.get_current_user),
 ):
     query = {}
     if statut:
@@ -60,75 +60,75 @@ async def list_sessions(
             {"code_interne": {"$regex": q, "$options": "i"}},
             {"description": {"$regex": q, "$options": "i"}},
         ]
-    items = await db.sessions.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    items = await deps.db.sessions.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return [with_progression(s) for s in items]
 
 
 @router.post("/sessions")
-async def create_session(payload: SessionPayload, user: dict = Depends(get_current_user)):
+async def create_session(payload: SessionPayload, user: dict = Depends(deps.get_current_user)):
     doc = payload.model_dump()
-    doc["id"] = new_id()
-    doc["code_interne"] = doc.get("code_interne") or f"SES-{now_utc().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
-    doc["created_at"] = now_utc().isoformat()
+    doc["id"] = deps.new_id()
+    doc["code_interne"] = doc.get("code_interne") or f"SES-{deps.now_utc().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+    doc["created_at"] = deps.now_utc().isoformat()
     doc["updated_at"] = doc["created_at"]
     doc["convocations_envoyees"] = False
     doc["evaluations_envoyees"] = False
     doc["factures_emises"] = False
     doc["attestations_emises"] = False
-    await db.sessions.insert_one(doc)
+    await deps.db.sessions.insert_one(doc)
     doc.pop("_id", None)
     return with_progression(doc)
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str, user: dict = Depends(get_current_user)):
-    doc = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+async def get_session(session_id: str, user: dict = Depends(deps.get_current_user)):
+    doc = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Session introuvable")
     return with_progression(doc)
 
 
 @router.put("/sessions/{session_id}")
-async def update_session(session_id: str, payload: SessionPayload, user: dict = Depends(get_current_user)):
+async def update_session(session_id: str, payload: SessionPayload, user: dict = Depends(deps.get_current_user)):
     doc = payload.model_dump()
-    doc["updated_at"] = now_utc().isoformat()
-    result = await db.sessions.update_one({"id": session_id}, {"$set": doc})
+    doc["updated_at"] = deps.now_utc().isoformat()
+    result = await deps.db.sessions.update_one({"id": session_id}, {"$set": doc})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Session introuvable")
-    updated = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    updated = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     return with_progression(updated)
 
 
 @router.patch("/sessions/{session_id}/statut")
-async def update_session_status(session_id: str, body: dict, user: dict = Depends(get_current_user)):
+async def update_session_status(session_id: str, body: dict, user: dict = Depends(deps.get_current_user)):
     statut = body.get("statut")
     if statut not in ("brouillon", "planification", "planifiee", "terminee", "archivee"):
         raise HTTPException(status_code=400, detail="Statut invalide")
-    result = await db.sessions.update_one({"id": session_id}, {"$set": {"statut": statut, "updated_at": now_utc().isoformat()}})
+    result = await deps.db.sessions.update_one({"id": session_id}, {"$set": {"statut": statut, "updated_at": deps.now_utc().isoformat()}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Session introuvable")
-    updated = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    updated = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     return with_progression(updated)
 
 
 @router.patch("/sessions/{session_id}/progression")
-async def update_session_progression(session_id: str, body: dict, user: dict = Depends(get_current_user)):
+async def update_session_progression(session_id: str, body: dict, user: dict = Depends(deps.get_current_user)):
     """Mark a progression flag (convocations_envoyees, evaluations_envoyees, factures_emises, attestations_emises)."""
     allowed = {"convocations_envoyees", "evaluations_envoyees", "factures_emises", "attestations_emises"}
     updates = {k: bool(v) for k, v in body.items() if k in allowed}
     if not updates:
         raise HTTPException(status_code=400, detail="Aucun champ valide")
-    updates["updated_at"] = now_utc().isoformat()
-    await db.sessions.update_one({"id": session_id}, {"$set": updates})
-    updated = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    updates["updated_at"] = deps.now_utc().isoformat()
+    await deps.db.sessions.update_one({"id": session_id}, {"$set": updates})
+    updated = await deps.db.sessions.find_one({"id": session_id}, {"_id": 0})
     if not updated:
         raise HTTPException(status_code=404, detail="Session introuvable")
     return with_progression(updated)
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
-    result = await db.sessions.delete_one({"id": session_id})
+async def delete_session(session_id: str, user: dict = Depends(deps.get_current_user)):
+    result = await deps.db.sessions.delete_one({"id": session_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Session introuvable")
     return {"ok": True}

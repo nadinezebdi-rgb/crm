@@ -14,8 +14,11 @@ async def _init_storage(force: bool = False) -> str:
     global _storage_key
     if _storage_key and not force:
         return _storage_key
+    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not emergent_key:
+        raise RuntimeError("EMERGENT_LLM_KEY must be set in environment or .env to use object storage")
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ["EMERGENT_LLM_KEY"]})
+        resp = await client.post(f"{STORAGE_URL}/init", json={"emergent_key": emergent_key})
         resp.raise_for_status()
         _storage_key = resp.json()["storage_key"]
     return _storage_key

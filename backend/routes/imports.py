@@ -4,7 +4,7 @@ import uuid
 from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
 
-from deps import db, now_utc, new_id, get_current_user
+import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
 from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns
 
@@ -13,7 +13,7 @@ router = APIRouter()
 
 # ----- Import EDOF Dossiers (apprenants + sessions) -----
 @router.post("/import/edof/preview")
-async def edof_preview(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def edof_preview(file: UploadFile = File(...), user: dict = Depends(deps.get_current_user)):
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10 Mo)")
@@ -33,7 +33,7 @@ async def edof_preview(file: UploadFile = File(...), user: dict = Depends(get_cu
 
 
 @router.post("/import/edof/commit")
-async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_current_user)):
+async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_current_user)):
     mapping = payload.mapping
 
     def val(row, field):
@@ -47,23 +47,23 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
         "apprenants_crees": 0, "apprenants_existants": 0,
         "sessions_creees": 0, "sessions_maj": 0, "lignes_ignorees": [],
     }
-    today_iso = now_utc().date().isoformat()
-    import_note = f"Importé depuis EDOF (CPF) le {now_utc().strftime('%d/%m/%Y')}"
+    today_iso = deps.now_utc().date().isoformat()
+    import_note = f"Importé depuis EDOF (CPF) le {deps.now_utc().strftime('%d/%m/%Y')}"
 
     financeur_cpf = None
     if payload.create_sessions:
-        financeur_cpf = await db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
+        financeur_cpf = await deps.db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
         if not financeur_cpf:
             financeur_cpf = {
-                "id": new_id(),
+                "id": deps.new_id(),
                 "nom": "Caisse des Dépôts — Mon Compte Formation",
                 "type_financeur": "cpf", "code": "CPF",
                 "email": None, "telephone": None, "adresse": None,
                 "notes": "Créé automatiquement lors de l'import EDOF.",
-                "created_at": now_utc().isoformat(),
-                "updated_at": now_utc().isoformat(),
+                "created_at": deps.now_utc().isoformat(),
+                "updated_at": deps.now_utc().isoformat(),
             }
-            await db.financeurs.insert_one(dict(financeur_cpf))
+            await deps.db.financeurs.insert_one(dict(financeur_cpf))
             financeur_cpf.pop("_id", None)
 
     session_groups: Dict[tuple, dict] = {}
@@ -87,30 +87,29 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
                 "nom": {"$regex": f"^{re.escape(nom)}$", "$options": "i"},
                 "prenom": {"$regex": f"^{re.escape(prenom)}$", "$options": "i"},
             }
-        existing = await db.apprenants.find_one(query, {"_id": 0, "id": 1})
+        existing = await deps.db.apprenants.find_one(query, {"_id": 0, "id": 1})
         if existing:
             apprenant_id = existing["id"]
             stats["apprenants_existants"] += 1
         else:
-            apprenant_id = new_id()
+            apprenant_id = deps.new_id()
             dossier = val(row, "dossier")
             notes = import_note + (f" — Dossier CPF n° {dossier}" if dossier else "")
-            await db.apprenants.insert_one({
+            await deps.db.apprenants.insert_one({
                 "id": apprenant_id, "nom": nom, "prenom": prenom,
                 "email": email or None,
                 "telephone": val(row, "telephone") or None,
                 "entreprise_id": None, "date_naissance": None, "adresse": None,
                 "dossier_cpf": dossier or None, "notes": notes,
-                "created_at": now_utc().isoformat(),
-                "updated_at": now_utc().isoformat(),
+                "created_at": deps.now_utc().isoformat(),
+                "updated_at": deps.now_utc().isoformat(),
             })
             stats["apprenants_crees"] += 1
-
-        if payload.create_sessions:
-            formation = val(row, "formation")
-            if not formation:
-                continue
-            d1 = parse_date_fr(val(row, "date_debut"))
+            if payload.create_sessions:
+                formation = val(row, "formation")
+                if not formation:
+                    continue
+                d1 = parse_date_fr(val(row, "date_debut"))
             d2 = parse_date_fr(val(row, "date_fin"))
             if payload.groupement == "mois" and d1:
                 mois = d1[:7]
@@ -141,9 +140,9 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
         if existing:
             new_ids = [a for a in group["apprenants"] if a not in existing.get("apprenants", [])]
             if new_ids:
-                await db.sessions.update_one(
+                await deps.db.sessions.update_one(
                     {"id": existing["id"]},
-                    {"$push": {"apprenants": {"$each": new_ids}}, "$set": {"updated_at": now_utc().isoformat()}},
+                    {"$push": {"apprenants": {"$each": new_ids}}, "$set": {"updated_at": deps.now_utc().isoformat()}},
                 )
             stats["sessions_maj"] += 1
         else:
@@ -153,8 +152,8 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
                 statut = "planifiee"
             else:
                 statut = "brouillon"
-            now_iso = now_utc().isoformat()
-            await db.sessions.insert_one({
+            now_iso = deps.now_utc().isoformat()
+            await deps.db.sessions.insert_one({
                 **SessionPayload(
                     nom=group["nom"], statut=statut,
                     date_debut=group["date_debut"], date_fin=group["date_fin"],
@@ -163,7 +162,7 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
                     financeur_id=financeur_cpf["id"] if financeur_cpf else None,
                     description=import_note + ".",
                 ).model_dump(),
-                "id": new_id(),
+                "id": deps.new_id(),
                 "code_interne": f"SES-{now_utc().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}",
                 "created_at": now_iso, "updated_at": now_iso,
                 "convocations_envoyees": False, "evaluations_envoyees": False,
@@ -176,7 +175,7 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(get_curre
 
 # ----- Factures CPF (encaissements) -----
 @router.post("/factures-cpf/import")
-async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends(deps.get_current_user)):
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10 Mo)")
@@ -216,27 +215,27 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
         key = {"numero_facture": numero_facture} if numero_facture else {
             "numero_dossier": numero_dossier, "montant": doc["montant"], "date_emission": doc["date_emission"],
         }
-        existing = await db.factures_cpf.find_one(key, {"_id": 1})
+        existing = await deps.db.factures_cpf.find_one(key, {"_id": 1})
         if existing:
-            await db.factures_cpf.update_one({"_id": existing["_id"]}, {"$set": doc})
+            await deps.db.factures_cpf.update_one({"_id": existing["_id"]}, {"$set": doc})
             stats["mises_a_jour"] += 1
         else:
-            await db.factures_cpf.insert_one({"id": new_id(), "created_at": now_utc().isoformat(), **doc})
+            await deps.db.factures_cpf.insert_one({"id": deps.new_id(), "created_at": deps.now_utc().isoformat(), **doc})
             stats["importees"] += 1
     return stats
 
 
 @router.get("/factures-cpf")
-async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
+async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends(deps.get_current_user)):
     query = {}
     if q:
         query = {"$or": [
             {"numero_dossier": {"$regex": re.escape(q), "$options": "i"}},
             {"numero_facture": {"$regex": re.escape(q), "$options": "i"}},
         ]}
-    factures = await db.factures_cpf.find(query, {"_id": 0}).sort("date_emission", -1).to_list(2000)
+    factures = await deps.db.factures_cpf.find(query, {"_id": 0}).sort("date_emission", -1).to_list(2000)
     apprenants_map = {}
-    async for a in db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}):
+    async for a in deps.db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}):
         apprenants_map[a["dossier_cpf"]] = a
     for f in factures:
         linked = apprenants_map.get(f.get("numero_dossier"))
@@ -245,8 +244,8 @@ async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends
 
 
 @router.get("/factures-cpf/stats")
-async def factures_cpf_stats(user: dict = Depends(get_current_user)):
-    factures = await db.factures_cpf.find({}, {"_id": 0, "montant": 1, "statut_reglement": 1, "date_emission": 1}).to_list(10000)
+async def factures_cpf_stats(user: dict = Depends(deps.get_current_user)):
+    factures = await deps.db.factures_cpf.find({}, {"_id": 0, "montant": 1, "statut_reglement": 1, "date_emission": 1}).to_list(10000)
     total = sum(f.get("montant", 0) for f in factures)
     verse = sum(f.get("montant", 0) for f in factures if str(f.get("statut_reglement", "")).lower().startswith("vers"))
     par_mois: Dict[str, Dict[str, float]] = {}
@@ -272,13 +271,13 @@ import calendar
 
 
 @router.post("/sessions/generer-depuis-factures-cpf")
-async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_user)):
+async def generer_sessions_depuis_factures_cpf(user: dict = Depends(deps.get_current_user)):
     """Regroupe les factures CPF par mois (date_emission) et crée une session synthétique par mois.
 
     - Une session "CPF — juillet 2025" par mois avec apprenants liés via dossier_cpf, montant total versé,
       financeur CPF (find-or-create). Idempotent : ré-exécution = sessions_maj sans doublon.
     """
-    factures = await db.factures_cpf.find(
+    factures = await deps.db.factures_cpf.find(
         {"date_emission": {"$ne": None}},
         {"_id": 0, "numero_dossier": 1, "numero_facture": 1, "montant": 1, "date_emission": 1, "statut_reglement": 1},
     ).to_list(20000)
@@ -287,21 +286,21 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_
 
     # Mapping dossier_cpf → apprenant_id pour relier les apprenants existants
     dossier_to_apprenant: Dict[str, str] = {}
-    async for a in db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "dossier_cpf": 1}):
+    async for a in deps.db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "dossier_cpf": 1}):
         dossier_to_apprenant[a["dossier_cpf"]] = a["id"]
 
     # Financeur CPF find-or-create
-    financeur_cpf = await db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
+    financeur_cpf = await deps.db.financeurs.find_one({"type_financeur": "cpf"}, {"_id": 0})
     if not financeur_cpf:
         financeur_cpf = {
-            "id": new_id(),
+            "id": deps.new_id(),
             "nom": "Caisse des Dépôts — Mon Compte Formation",
             "type_financeur": "cpf", "code": "CPF",
             "email": None, "telephone": None, "adresse": None,
             "notes": "Créé automatiquement lors de la génération de sessions CPF.",
-            "created_at": now_utc().isoformat(), "updated_at": now_utc().isoformat(),
+            "created_at": deps.now_utc().isoformat(), "updated_at": deps.now_utc().isoformat(),
         }
-        await db.financeurs.insert_one(dict(financeur_cpf))
+        await deps.db.financeurs.insert_one(dict(financeur_cpf))
         financeur_cpf.pop("_id", None)
 
     # Regroupement par mois (YYYY-MM)
@@ -338,9 +337,9 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_
             f"({g['nb_factures']} facture(s), {round(g['montant_verse'], 2)} € versé / {montant} € émis)."
         )
 
-        existing = await db.sessions.find_one({"nom": nom_session}, {"_id": 0, "id": 1})
+        existing = await deps.db.sessions.find_one({"nom": nom_session}, {"_id": 0, "id": 1})
         if existing:
-            await db.sessions.update_one(
+            await deps.db.sessions.update_one(
                 {"id": existing["id"]},
                 {"$set": {
                     "apprenants": apprenants_list,
@@ -348,14 +347,14 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_
                     "date_debut": date_debut, "date_fin": date_fin,
                     "description": description,
                     "financeur_id": financeur_cpf["id"],
-                    "updated_at": now_utc().isoformat(),
+                    "updated_at": deps.now_utc().isoformat(),
                 }},
             )
             stats["sessions_maj"] += 1
         else:
             statut = "terminee" if date_fin < today_iso else ("planifiee" if date_debut <= today_iso else "planifiee")
-            now_iso = now_utc().isoformat()
-            await db.sessions.insert_one({
+            now_iso = deps.now_utc().isoformat()
+            await deps.db.sessions.insert_one({
                 **SessionPayload(
                     nom=nom_session, statut=statut,
                     date_debut=date_debut, date_fin=date_fin,
@@ -365,7 +364,7 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(get_current_
                     description=description,
                     categorie="CPF",
                 ).model_dump(),
-                "id": new_id(),
+                "id": deps.new_id(),
                 "code_interne": f"CPF-{annee}-{num_mois}",
                 "created_at": now_iso, "updated_at": now_iso,
                 "convocations_envoyees": False, "evaluations_envoyees": False,

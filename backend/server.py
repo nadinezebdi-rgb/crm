@@ -9,11 +9,13 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+import os
 import logging
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from deps import db, mongo_client
+import deps
+from deps import init_mongo, close_mongo
 from seed import seed
 from routes.auth import router as auth_router
 from routes.crud import router as crud_router
@@ -57,14 +59,28 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("user_id", unique=True)
-    await db.sessions.create_index("id", unique=True)
-    await db.user_sessions.create_index("session_token")
-    await seed()
-    logger.info("Blade Academy API ready ✅")
+    # Initialize MongoDB connection and collections
+    try:
+        await init_mongo()
+    except RuntimeError as e:
+        logger.error(f"MongoDB initialization failed: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Database connection error: {e}. Ensure MongoDB is running at {os.environ.get('MONGO_URL', 'mongodb://localhost:27017')}")
+        raise
+    
+    try:
+        await deps.db.users.create_index("email", unique=True)
+        await deps.db.users.create_index("user_id", unique=True)
+        await deps.db.sessions.create_index("id", unique=True)
+        await deps.db.user_sessions.create_index("session_token")
+        await seed()
+        logger.info("Blade Academy API ready ✅")
+    except Exception as e:
+        logger.error(f"Startup initialization error: {e}")
+        raise
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    mongo_client.close()
+    close_mongo()

@@ -1,39 +1,40 @@
 """Seed data: rebranding migration + admin user + demo entities (idempotent)."""
 import os
 
-from deps import db, now_utc, new_id, hash_password, verify_password
+import deps
+from deps import now_utc, new_id, hash_password, verify_password
 from models import DEFAULT_ORGANISME
 
 
 async def seed():
     # --- Migration idempotente de rebranding (FormaPro -> Blade Academy) ---
-    old_admin = await db.users.find_one({"email": "admin@formapro.fr"})
-    if old_admin and not await db.users.find_one({"email": "admin@blade-academy.fr"}):
-        await db.users.update_one(
+    old_admin = await deps.db.users.find_one({"email": "admin@formapro.fr"})
+    if old_admin and not await deps.db.users.find_one({"email": "admin@blade-academy.fr"}):
+        await deps.db.users.update_one(
             {"email": "admin@formapro.fr"},
             {"$set": {"email": "admin@blade-academy.fr", "name": "Admin Blade Academy"}},
         )
-    await db.users.update_many(
+    await deps.db.users.update_many(
         {"organisme": {"$in": ["FormaPro", "FormaPro Académie"]}},
         {"$set": {"organisme": "Blade Academy"}},
     )
-    await db.lieux.update_many({"nom": "Centre FormaPro Paris"}, {"$set": {"nom": "Centre Blade Academy Paris"}})
-    async for f in db.formateurs.find({"email": {"$regex": "@formapro\\.fr$"}}):
-        await db.formateurs.update_one(
+    await deps.db.lieux.update_many({"nom": "Centre FormaPro Paris"}, {"$set": {"nom": "Centre Blade Academy Paris"}})
+    async for f in deps.db.formateurs.find({"email": {"$regex": "@formapro\\.fr$"}}):
+        await deps.db.formateurs.update_one(
             {"id": f["id"]},
             {"$set": {"email": f["email"].replace("@formapro.fr", "@blade-academy.fr")}},
         )
 
     # Infos légales de l'organisme
-    if not await db.organisme_settings.find_one({"key": "organisme"}):
-        await db.organisme_settings.insert_one({"key": "organisme", **DEFAULT_ORGANISME})
+    if not await deps.db.organisme_settings.find_one({"key": "organisme"}):
+        await deps.db.organisme_settings.insert_one({"key": "organisme", **DEFAULT_ORGANISME})
 
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@blade-academy.fr")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
-    existing = await db.users.find_one({"email": admin_email})
+    existing = await deps.db.users.find_one({"email": admin_email})
     if not existing:
-        await db.users.insert_one({
+        await deps.db.users.insert_one({
             "user_id": new_id("usr_"),
             "email": admin_email,
             "password_hash": hash_password(admin_password),
@@ -44,28 +45,28 @@ async def seed():
             "created_at": now_utc().isoformat(),
         })
     elif not verify_password(admin_password, existing.get("password_hash", "")):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        await deps.db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
     # Si l'utilisateur a purgé la démo, on ne ré-insère jamais
-    if await db.meta.find_one({"key": "demo_purged"}):
+    if await deps.db.meta.find_one({"key": "demo_purged"}):
         return
 
-    if await db.entreprises.count_documents({}) == 0:
-        await db.entreprises.insert_many([
+    if await deps.db.entreprises.count_documents({}) == 0:
+        await deps.db.entreprises.insert_many([
             {"id": new_id(), "raison_sociale": "Acme Industries", "siret": "12345678900012", "ville": "Paris", "email": "contact@acme.fr", "contact_nom": "Sophie Bernard", "created_at": now_utc().isoformat()},
             {"id": new_id(), "raison_sociale": "Solaris Tech", "siret": "98765432100018", "ville": "Lyon", "email": "rh@solaris.fr", "contact_nom": "Marc Dubois", "created_at": now_utc().isoformat()},
             {"id": new_id(), "raison_sociale": "Nordique Conseil", "siret": "45678912300026", "ville": "Lille", "email": "contact@nordique.fr", "contact_nom": "Léa Martin", "created_at": now_utc().isoformat()},
         ])
 
-    if await db.formateurs.count_documents({}) == 0:
-        await db.formateurs.insert_many([
+    if await deps.db.formateurs.count_documents({}) == 0:
+        await deps.db.formateurs.insert_many([
             {"id": new_id(), "nom": "Lefebvre", "prenom": "Camille", "email": "c.lefebvre@blade-academy.fr", "interne": True, "specialites": ["Gestion de projet", "Agile"], "tarif_journalier": 850, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Moreau", "prenom": "Antoine", "email": "a.moreau@externe.fr", "interne": False, "specialites": ["Cybersécurité"], "tarif_journalier": 1200, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Garcia", "prenom": "Inès", "email": "i.garcia@blade-academy.fr", "interne": True, "specialites": ["Communication", "Management"], "tarif_journalier": 950, "created_at": now_utc().isoformat()},
         ])
 
-    if await db.apprenants.count_documents({}) == 0:
-        await db.apprenants.insert_many([
+    if await deps.db.apprenants.count_documents({}) == 0:
+        await deps.db.apprenants.insert_many([
             {"id": new_id(), "nom": "Petit", "prenom": "Julien", "email": "j.petit@acme.fr", "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Rousseau", "prenom": "Émilie", "email": "e.rousseau@acme.fr", "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Bertrand", "prenom": "Lucas", "email": "l.bertrand@solaris.fr", "created_at": now_utc().isoformat()},
@@ -73,27 +74,27 @@ async def seed():
             {"id": new_id(), "nom": "Robin", "prenom": "Hugo", "email": "h.robin@nordique.fr", "created_at": now_utc().isoformat()},
         ])
 
-    if await db.financeurs.count_documents({}) == 0:
-        await db.financeurs.insert_many([
+    if await deps.db.financeurs.count_documents({}) == 0:
+        await deps.db.financeurs.insert_many([
             {"id": new_id(), "nom": "OPCO Atlas", "type_financeur": "opco", "code": "ATLAS", "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "OPCO EP", "type_financeur": "opco", "code": "EP", "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "CPF Direct", "type_financeur": "cpf", "code": "CPF", "created_at": now_utc().isoformat()},
         ])
 
-    if await db.lieux.count_documents({}) == 0:
-        await db.lieux.insert_many([
+    if await deps.db.lieux.count_documents({}) == 0:
+        await deps.db.lieux.insert_many([
             {"id": new_id(), "nom": "Centre Blade Academy Paris", "adresse": "12 rue de la République", "code_postal": "75011", "ville": "Paris", "capacite": 20, "distanciel": False, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Espace Lyon Confluence", "adresse": "5 cours Charlemagne", "code_postal": "69002", "ville": "Lyon", "capacite": 15, "distanciel": False, "created_at": now_utc().isoformat()},
             {"id": new_id(), "nom": "Distanciel - Zoom", "capacite": 100, "distanciel": True, "created_at": now_utc().isoformat()},
         ])
 
-    if await db.sessions.count_documents({}) == 0:
-        admin_user = await db.users.find_one({"email": admin_email}, {"_id": 0})
+    if await deps.db.sessions.count_documents({}) == 0:
+        admin_user = await deps.db.users.find_one({"email": admin_email}, {"_id": 0})
         admin_id = admin_user["user_id"] if admin_user else ""
-        formateurs = await db.formateurs.find({}, {"_id": 0}).to_list(10)
-        apprenants = await db.apprenants.find({}, {"_id": 0}).to_list(10)
-        entreprises = await db.entreprises.find({}, {"_id": 0}).to_list(10)
-        lieux = await db.lieux.find({}, {"_id": 0}).to_list(10)
+        formateurs = await deps.db.formateurs.find({}, {"_id": 0}).to_list(10)
+        apprenants = await deps.db.apprenants.find({}, {"_id": 0}).to_list(10)
+        entreprises = await deps.db.entreprises.find({}, {"_id": 0}).to_list(10)
+        lieux = await deps.db.lieux.find({}, {"_id": 0}).to_list(10)
 
         demo_sessions = [
             {
@@ -159,4 +160,4 @@ async def seed():
                 "created_at": now_utc().isoformat(), "updated_at": now_utc().isoformat(),
             },
         ]
-        await db.sessions.insert_many(demo_sessions)
+        await deps.db.sessions.insert_many(demo_sessions)
