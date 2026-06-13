@@ -2,7 +2,6 @@ import React, { useRef, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -23,13 +22,10 @@ export default function ImportEdofDialog({ onDone }) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [mapping, setMapping] = useState({});
-  const [createSessions, setCreateSessions] = useState(true);
-  const [groupement, setGroupement] = useState("mois");
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
 
-  const reset = () => { setStep(1); setPreview(null); setMapping({}); setResult(null); setCreateSessions(true); setGroupement("mois"); };
-
+  const reset = () => { setStep(1); setPreview(null); setMapping({}); setResult(null); };
   const uploadFile = async (file) => {
     if (!file) return;
     setLoading(true);
@@ -51,8 +47,6 @@ export default function ImportEdofDialog({ onDone }) {
       const { data } = await api.post("/import/edof/commit", {
         rows: preview.rows,
         mapping,
-        create_sessions: createSessions,
-        groupement,
       });
       setResult(data);
       setStep(3);

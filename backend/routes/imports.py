@@ -47,7 +47,6 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_
         "apprenants_crees": 0, "apprenants_existants": 0,
         "sessions_creees": 0, "sessions_maj": 0, "lignes_ignorees": [],
     }
-    today_iso = deps.now_utc().date().isoformat()
     import_note = f"Importé depuis EDOF (CPF) le {deps.now_utc().strftime('%d/%m/%Y')}"
 
     for i, row in enumerate(payload.rows):
