@@ -1,0 +1,80 @@
+{
+  "theme": "light",
+  "archetype": "Swiss & High-Contrast (Archetype 4)",
+  "global_styling": {
+    "background": "bg-gray-50",
+    "surface": "bg-white",
+    "border_radius": "rounded-md",
+    "borders": "border border-gray-200"
+  },
+  "typography": {
+    "heading_font": "Manrope",
+    "body_font": "IBM Plex Sans",
+    "h1": "text-2xl font-bold tracking-tight text-gray-900",
+    "h2": "text-xl font-semibold tracking-tight text-gray-900",
+    "h3": "text-xs font-bold uppercase tracking-[0.2em] text-gray-500",
+    "body": "text-sm text-gray-700 leading-relaxed",
+    "small": "text-xs text-gray-500"
+  },
+  "colors": {
+    "primary": "bg-slate-900 text-white hover:bg-slate-800",
+    "secondary": "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
+    "sidebar": "bg-slate-900 text-slate-300",
+    "sidebar_active": "bg-slate-800 text-white",
+    "badges": {
+      "OPCO": "bg-blue-100 text-blue-800 border border-blue-200",
+      "CPF": "bg-emerald-100 text-emerald-800 border border-emerald-200",
+      "Privé": "bg-amber-100 text-amber-800 border border-amber-200"
+    }
+  },
+  "layout": {
+    "app_shell": "flex h-screen w-full overflow-hidden bg-gray-50",
+    "sidebar": "w-64 flex-shrink-0 flex flex-col justify-between border-r border-gray-200 bg-white z-20",
+    "main_content": "flex-1 flex flex-col h-full overflow-hidden",
+    "header": "h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white sticky top-0 z-10",
+    "kanban_board": "flex-1 overflow-x-auto overflow-y-hidden p-6 flex gap-6",
+    "kanban_column": "w-80 flex-shrink-0 flex flex-col h-full max-h-full bg-gray-100/50 rounded-lg border border-gray-200"
+  },
+  "components": {
+    "sidebar_zones": {
+      "description": "2 distinct zones: ESPACE ACTIF and ESPACE HISTORIQUE. Use uppercase overlines (h3 typography) to separate them.",
+      "classes": "px-4 py-6 space-y-8"
+    },
+    "kanban_card": {
+      "description": "Dense, functional card. Contains Trainee Name, Financer Badge, Trainer Name, Entry Date.",
+      "classes": "bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing mb-3 flex flex-col gap-3 relative group"
+    },
+    "onboarding_form": {
+      "description": "2-column dense grid for rapid data entry.",
+      "wrapper_classes": "grid grid-cols-1 md:grid-cols-2 gap-6",
+      "input_classes": "h-9 text-sm border-gray-300 rounded-md focus:ring-slate-900 focus:border-slate-900 shadow-sm"
+    },
+    "closed_dossiers_table": {
+      "description": "Ultra-fast search on top, compact list below. Table uses crisp borders and minimal padding for data density.",
+      "container_classes": "bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden",
+      "table_classes": "w-full text-sm text-left border-collapse",
+      "th_classes": "px-4 py-3 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider",
+      "td_classes": "px-4 py-3 border-b border-gray-100"
+    }
+  },
+  "data_testid_rules": {
+    "general": "ALL interactive elements MUST have a data-testid attribute formatted as role-action-element.",
+    "examples": [
+      "data-testid='sidebar-nav-dashboard'",
+      "data-testid='kanban-card-[id]'",
+      "data-testid='kanban-column-devis-en-attente'",
+      "data-testid='onboarding-form-submit'",
+      "data-testid='search-dossiers-input'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use lucide-react for all icons (e.g., LayoutDashboard, UserPlus, Archive, FileText).",
+    "Ensure the Kanban board columns strictly follow the 5 phases: 'Devis en attente', 'Devis validé', 'En action de formation', 'Fin d\\'action de formation', 'Facturé'.",
+    "Form fields for Onboarding: nom, prénom, date naissance, adresse, email, téléphone, formateur (Select/Input), type financeur (Select: OPCO/CPF/Privé).",
+    "For Closed Dossiers, add a 'Documents' column or expandable row with links/icons for: devis signé, attestation, facture, justificatif.",
+    "Auto-archive logic: Provide a 'Mark as Paid' (Réglée) action in the 'Facturé' column that visually removes the card from the Kanban board and adds it to the Closed Dossiers view.",
+    "Ensure all components use .js extensions instead of .tsx as per environment constraints.",
+    "Implement drag-and-drop using a lightweight library (like dnd-kit or react-beautiful-dnd) if possible, ensuring data-testid is attached to draggable items.",
+    "Do NOT use 'Inter' font. Import and use 'Manrope' for headings and 'IBM Plex Sans' for body."
+  ]
+}
