@@ -50,7 +50,7 @@ async def edof_commit(payload: EdofCommitPayload, user: dict = Depends(deps.get_
     today_iso = deps.now_utc().date().isoformat()
     import_note = f"Importé depuis EDOF (CPF) le {deps.now_utc().strftime('%d/%m/%Y')}"
 
-for i, row in enumerate(payload.rows):
+    for i, row in enumerate(payload.rows):
         line_no = i + 2
         nom, prenom = val(row, "nom"), val(row, "prenom")
         if not nom or not prenom:
