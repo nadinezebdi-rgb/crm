@@ -2,9 +2,11 @@ import React, { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { STATUS_COLUMNS, STATUS_LABELS, formatDate } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
+import EdofImportDialog from "@/components/EdofImportDialog";
+import ClearDossiersDialog from "@/components/ClearDossiersDialog";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { CheckCircle, ArrowRight, User, CalendarBlank, Plus, Spinner } from "@phosphor-icons/react";
+import { CheckCircle, ArrowRight, User, CalendarBlank, Plus, Spinner, FileArrowUp, Trash } from "@phosphor-icons/react";
 
 function NextStatusButton({ dossier, onChange }) {
   const idx = STATUS_COLUMNS.findIndex((c) => c.id === dossier.status);
@@ -124,6 +126,8 @@ function Column({ col, items, onChange, onDrop }) {
 export default function KanbanDashboard() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const [showClear, setShowClear] = useState(false);
 
   const load = async () => {
     try {
@@ -167,13 +171,29 @@ export default function KanbanDashboard() {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display">Tableau de Bord</h1>
           <p className="text-xs text-slate-500 mt-1">Suivi visuel des dossiers en cours — Vue pipeline</p>
         </div>
-        <Link
-          to="/onboarding"
-          data-testid="goto-onboarding"
-          className="inline-flex items-center gap-2 h-9 px-4 text-sm font-semibold text-white bg-navy hover:bg-navy/90 rounded-md transition-colors"
-        >
-          <Plus size={14} weight="bold" /> Nouveau stagiaire
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            data-testid="open-edof-import"
+            className="inline-flex items-center gap-2 h-9 px-3 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors"
+          >
+            <FileArrowUp size={14} weight="bold" /> Importer EDOF
+          </button>
+          <button
+            onClick={() => setShowClear(true)}
+            data-testid="open-clear-dossiers"
+            className="inline-flex items-center gap-2 h-9 px-3 text-sm font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-md transition-colors"
+          >
+            <Trash size={14} weight="bold" /> Vider
+          </button>
+          <Link
+            to="/onboarding"
+            data-testid="goto-onboarding"
+            className="inline-flex items-center gap-2 h-9 px-4 text-sm font-semibold text-white bg-navy hover:bg-navy/90 rounded-md transition-colors"
+          >
+            <Plus size={14} weight="bold" /> Nouveau stagiaire
+          </Link>
+        </div>
       </div>
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
@@ -192,6 +212,9 @@ export default function KanbanDashboard() {
           ))}
         </div>
       )}
+
+      <EdofImportDialog open={showImport} onClose={() => setShowImport(false)} onImported={load} />
+      <ClearDossiersDialog open={showClear} onClose={() => setShowClear(false)} onCleared={load} />
     </div>
   );
 }

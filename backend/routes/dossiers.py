@@ -11,11 +11,12 @@ import shutil
 import uuid
 from pathlib import Path
 from typing import List, Optional, Literal
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import deps
+from import_edof import parse_import_file, auto_map, parse_date_fr
 
 router = APIRouter()
 
@@ -278,3 +279,144 @@ async def dossiers_stats(user: dict = Depends(deps.get_current_user)):
         by_status[s] = await deps.db.dossiers.count_documents({"status": s})
     total = await deps.db.dossiers.count_documents({})
     return {"total": total, "actifs": total - by_status.get("regle", 0), "by_status": by_status}
+
+
+# ============================================================================
+# ADMIN — Vider tous les dossiers + Importer depuis EDOF/CSV/XLSX
+# ============================================================================
+
+@router.delete("/dossiers-admin/clear")
+async def clear_all_dossiers(
+    scope: Optional[str] = "all",  # "all" | "active" | "closed"
+    user: dict = Depends(deps.get_current_user),
+):
+    """Supprime TOUS les dossiers + leurs documents (action irréversible)."""
+    if scope not in ("all", "active", "closed"):
+        raise HTTPException(400, "scope invalide : utilisez 'all', 'active' ou 'closed'")
+    query: dict = {}
+    if scope == "active":
+        query = {"status": {"$ne": "regle"}}
+    elif scope == "closed":
+        query = {"status": "regle"}
+
+    # Identifie d'abord les dossiers concernés
+    dossiers = await deps.db.dossiers.find(query, {"_id": 0, "id": 1}).to_list(100000)
+    dossier_ids = [d["id"] for d in dossiers]
+
+    # Supprime les documents (DB + fichiers disque)
+    docs = await deps.db.dossier_documents.find(
+        {"dossier_id": {"$in": dossier_ids}}, {"_id": 0}
+    ).to_list(100000) if dossier_ids else []
+    for doc in docs:
+        fpath = UPLOAD_DIR / doc.get("filename", "")
+        if fpath.exists():
+            try:
+                fpath.unlink()
+            except Exception:
+                pass
+    if dossier_ids:
+        await deps.db.dossier_documents.delete_many({"dossier_id": {"$in": dossier_ids}})
+
+    # Supprime les dossiers
+    result = await deps.db.dossiers.delete_many(query)
+    return {"deleted": result.deleted_count, "documents_deleted": len(docs)}
+
+
+def _detect_financeur_type(value: str) -> str:
+    """Devine le type de financeur depuis une chaîne libre."""
+    v = (value or "").lower()
+    if any(k in v for k in ["cpf", "compte personnel", "mon compte", "edof"]):
+        return "CPF"
+    if any(k in v for k in ["opco", "atlas", "akto", "afdas", "constructys", "ocapiat", "uniformation", "ep "]):
+        return "OPCO"
+    if any(k in v for k in ["prive", "privé", "client", "auto"]):
+        return "Privé"
+    return "CPF"  # défaut : fichier EDOF → CPF
+
+
+@router.post("/dossiers-admin/import-edof")
+async def import_edof_dossiers(
+    file: UploadFile = File(...),
+    default_financeur: str = Form("CPF"),
+    default_formation: str = Form("ANGLAIS"),
+    default_formateur_id: Optional[str] = Form(None),
+    user: dict = Depends(deps.get_current_user),
+):
+    """Importe un export EDOF/CSV/Excel et crée un dossier par ligne.
+
+    Détecte automatiquement les colonnes : nom, prénom, date de naissance,
+    adresse, email, téléphone, date début, date fin, formation.
+    """
+    content = await file.read()
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(400, "Fichier trop volumineux (max 15 Mo)")
+    try:
+        columns, rows = parse_import_file(file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not rows:
+        raise HTTPException(400, "Aucune ligne de données détectée")
+    if default_financeur not in ("OPCO", "CPF", "Privé"):
+        raise HTTPException(400, "default_financeur invalide : utilisez 'OPCO', 'CPF' ou 'Privé'")
+
+    mapping = auto_map(columns)
+    if not mapping.get("nom") or not mapping.get("prenom"):
+        raise HTTPException(400, "Colonnes Nom et Prénom introuvables dans le fichier")
+
+    def cell(row: dict, field: str) -> str:
+        col = mapping.get(field)
+        return str(row.get(col) or "").strip() if col else ""
+
+    # Valide le formateur par défaut s'il est fourni
+    formateur_doc = None
+    if default_formateur_id:
+        formateur_doc = await deps.db.formateurs.find_one({"id": default_formateur_id})
+        if not formateur_doc:
+            raise HTTPException(400, "Formateur par défaut introuvable")
+
+    created = 0
+    skipped = []
+    now_iso = deps.now_utc().isoformat()
+
+    for idx, row in enumerate(rows, start=1):
+        nom = cell(row, "nom")
+        prenom = cell(row, "prenom")
+        if not nom or not prenom:
+            skipped.append({"ligne": idx, "raison": "nom/prénom manquant"})
+            continue
+
+        formation_libre = cell(row, "formation") or default_formation
+        financeur_type = default_financeur
+        financeur_nom = cell(row, "dossier") or None  # n° de dossier CPF si présent
+
+        dossier = {
+            "id": deps.new_id(),
+            "nom": nom,
+            "prenom": prenom,
+            "date_naissance": parse_date_fr(cell(row, "date_naissance")) or None,
+            "adresse": cell(row, "adresse") or None,
+            "email": cell(row, "email") or None,
+            "telephone": cell(row, "telephone") or None,
+            "formateur_id": default_formateur_id,
+            "financeur_type": financeur_type,
+            "financeur_nom": financeur_nom,
+            "formation": formation_libre,
+            "notes": f"Importé depuis EDOF · {file.filename}",
+            "status": "devis_attente",
+            "date_entree": now_iso,
+            "date_cloture": None,
+            "date_debut_formation": parse_date_fr(cell(row, "date_debut")),
+            "date_fin_formation": parse_date_fr(cell(row, "date_fin")),
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        await deps.db.dossiers.insert_one(dossier)
+        created += 1
+
+    return {
+        "created": created,
+        "total_rows": len(rows),
+        "skipped": skipped,
+        "mapping_detected": mapping,
+        "columns": columns,
+    }

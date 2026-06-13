@@ -14,6 +14,8 @@ from datetime import datetime
 TARGET_FIELDS = [
     {"key": "nom", "label": "Nom", "required": True},
     {"key": "prenom", "label": "Prénom", "required": True},
+    {"key": "date_naissance", "label": "Date de naissance", "required": False},
+    {"key": "adresse", "label": "Adresse", "required": False},
     {"key": "email", "label": "Email", "required": False},
     {"key": "telephone", "label": "Téléphone", "required": False},
     {"key": "dossier", "label": "N° de dossier CPF", "required": False},
@@ -34,6 +36,8 @@ def _norm(s):
 _KEYWORDS = {
     "prenom": ["prenom"],
     "nom": ["nom de naissance", "nom d'usage", "nom dusage", "nom du titulaire", "nom"],
+    "date_naissance": ["date de naissance", "naissance", "ne(e) le", "ne le", "nee le", "date naissance", "birth"],
+    "adresse": ["adresse postale", "adresse domicile", "adresse"],
     "email": ["mail", "courriel", "adresse electronique"],
     "telephone": ["telephone", "portable", "mobile", "tel"],
     "dossier": ["dossier"],
@@ -48,16 +52,18 @@ _KEYWORDS = {
 # ou "date d'entrée en formation" capté par "formation").
 _EXCLUDE = {
     "nom": ["prenom", "organisme", "formation", "session"],
+    "adresse": ["mail", "courriel", "electronique"],
     "formation": ["date", "entree", "sortie", "debut", "fin", "numero", "n°"],
     "telephone": ["intitule"],
     "prix": ["heure"],
+    "date_naissance": ["formation", "session", "debut", "fin", "entree", "sortie"],
 }
 
 
 def auto_map(columns):
     used = set()
     mapping = {}
-    for field in ["prenom", "nom", "email", "telephone", "dossier", "formation", "date_debut", "date_fin", "prix", "statut"]:
+    for field in ["prenom", "nom", "date_naissance", "adresse", "email", "telephone", "dossier", "formation", "date_debut", "date_fin", "prix", "statut"]:
         mapping[field] = None
         for kw in _KEYWORDS[field]:
             found = None
