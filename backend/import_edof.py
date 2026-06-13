@@ -205,3 +205,15 @@ def map_facture_columns(columns):
                 used.add(found)
                 break
     return mapping
+
+
+NIVEAUX_CECRL = ["A1", "A2", "B1", "B2", "C1", "C2"]
+
+def detect_niveau_anglais(formation):
+    """Renvoie le niveau CECRL (A1..C2) si l'intitulé contient « anglais », sinon None."""
+    f = str(formation or "")
+    if "anglais" not in f.lower():
+        return None
+    m = re.search(r"\b([abcABC][12])\b", f)
+        return m.group(1).upper() if m else None
+        
