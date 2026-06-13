@@ -58,6 +58,22 @@ async def seed():
             {"id": new_id(), "raison_sociale": "Nordique Conseil", "siret": "45678912300026", "ville": "Lille", "email": "contact@nordique.fr", "contact_nom": "Léa Martin", "created_at": now_utc().isoformat()},
         ])
 
+    # Formateurs spécifiques demandés (idempotent — créés s'ils n'existent pas)
+    formateurs_requis = [
+        {"nom": "FORMATION", "prenom": "NEO", "email": "contact@neoformation.fr", "interne": False, "specialites": ["Anglais"]},
+        {"nom": "SKILLS", "prenom": "HIGH", "email": "contact@highskills.fr", "interne": False, "specialites": ["Anglais"]},
+        {"nom": "DERFEUIL", "prenom": "VIRGINIA", "email": "virginia.derfeuil@blade-academy.fr", "interne": True, "specialites": ["Anglais"]},
+    ]
+    for f in formateurs_requis:
+        existing_f = await deps.db.formateurs.find_one({"nom": f["nom"], "prenom": f["prenom"]})
+        if not existing_f:
+            await deps.db.formateurs.insert_one({
+                "id": new_id(),
+                **f,
+                "tarif_journalier": 0,
+                "created_at": now_utc().isoformat(),
+            })
+
     if await deps.db.formateurs.count_documents({}) == 0:
         await deps.db.formateurs.insert_many([
             {"id": new_id(), "nom": "Lefebvre", "prenom": "Camille", "email": "c.lefebvre@blade-academy.fr", "interne": True, "specialites": ["Gestion de projet", "Agile"], "tarif_journalier": 850, "created_at": now_utc().isoformat()},
