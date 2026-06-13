@@ -12,8 +12,8 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@blade-academy.fr");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const onSubmit = async (e) => {
@@ -156,9 +156,6 @@ export default function Login() {
             </Link>
           </p>
 
-          <div className="mt-8 rounded-md bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-700">Démo :</span> admin@blade-academy.fr / admin123
-          </div>
         </form>
       </div>
     </div>
