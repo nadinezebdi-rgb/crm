@@ -1,51 +1,49 @@
-# CRM Formation — PRD
+# Blade Academy CRM — PRD
 
 ## Problème initial
-Construire un CRM pour la gestion individualisée de stagiaires en formation, avec:
-- Sidebar à 2 zones (Espace Actif / Espace Historique)
-- Tableau de bord Kanban à 5 colonnes (Devis en attente → Devis validé → En action de formation → Fin d'action de formation → Facturé)
-- Cartes avec badge couleur financeur (🔵 OPCO / 🟢 CPF / 🟡 Privé), nom du formateur, date d'entrée
-- Module Onboarding rapide
-- Dossiers Clôturés avec barre de recherche ultra-rapide (par nom, OPCO, formateur) + documents (devis signé, attestation, facture, justificatif de paiement)
-- Auto-archivage dès statut "Réglé"
+Le CRM Blade Academy existant (https://github.com/nadinezebdi-rgb/crm) doit être conservé et ENRICHI avec un module de pilotage des dossiers stagiaires (workflow Kanban + Onboarding rapide + Archive intelligente), sans casser l'existant.
 
-## Choix utilisateur
-- Aucune authentification
-- Upload réel de fichiers (stockage local /app/backend/uploads)
-- CRUD complet des formateurs
-- Démarrer vide (aucune donnée seed)
-- Design moderne et professionnel
+## Choix utilisateur (itération 2)
+- Garder TOUT l'existant (sessions, apprenants, formateurs, etc.) du repo Blade Academy
+- Ajouter par-dessus : sidebar 2 zones, Tableau de Bord Kanban, Onboarding rapide, Dossiers Clôturés
+- Auth existante (JWT + Emergent Google) conservée
+- Upload réel de fichiers (stockage disque dans /app/backend/uploads_dossiers/)
 
 ## Architecture
-- **Backend** : FastAPI + MongoDB (Motor) + UUID IDs. Routes dans /app/backend/server.py.
-- **Frontend** : React 19 + react-router-dom + Tailwind + lucide-react + sonner.
-- **Stockage docs** : Fichiers sur disque dans /app/backend/uploads/, métadonnées en Mongo.
-- **Design** : Swiss & High-Contrast (Manrope headings + IBM Plex Sans body), palette slate + accents bleu/vert/ambre pour financeurs.
+- **Backend** : FastAPI + MongoDB. Code existant inchangé, ajout de `routes/dossiers.py` (nouvelle collection `dossiers` + `dossier_documents`).
+- **Frontend** : React 19. Layout existant modifié pour 4 zones (Actif / Données / Historique / Config). 4 nouvelles pages.
 
-## Routes API
-- `GET/POST/PUT/DELETE /api/formateurs[/{id}]`
-- `GET/POST/PUT/DELETE /api/stagiaires[/{id}]`
-- `GET /api/stagiaires/active` — Kanban (statut ≠ regle)
-- `GET /api/stagiaires/closed?q=…` — Archives (statut = regle)
-- `PATCH /api/stagiaires/{id}/status` — Workflow Kanban + auto-archivage
-- `POST /api/stagiaires/{id}/documents` (multipart) — Upload
-- `GET /api/documents/{id}/download` — Download
-- `DELETE /api/documents/{id}` — Suppression doc
-- `GET /api/stats` — Compteurs dashboard
+## Workflow Kanban
+Statuts : `devis_attente` → `devis_valide` → `en_formation` → `fin_formation` → `facture` → `regle` (archive auto).
+Dates auto-renseignées :
+- `en_formation` → `date_debut_formation`
+- `fin_formation` → `date_fin_formation`
+- `regle` → `date_cloture` + sortie du Kanban
+
+## Routes NOUVELLES (toutes auth requise)
+- `POST /api/dossiers` — Onboarding
+- `GET /api/dossiers/active` — Kanban
+- `GET /api/dossiers/closed?q=…` — Archives (recherche multi-champs)
+- `GET/PUT/DELETE /api/dossiers/{id}`
+- `PATCH /api/dossiers/{id}/status`
+- `POST /api/dossiers/{id}/documents` (multipart)
+- `GET /api/dossiers/{id}/documents`
+- `GET /api/dossier-documents/{id}/download`
+- `DELETE /api/dossier-documents/{id}`
 
 ## Implémenté (13 Jan 2026)
-- ✅ Backend complet : Formateurs CRUD, Stagiaires CRUD, workflow statut, archivage auto, upload/download/delete documents
-- ✅ Frontend : 5 pages (Dashboard Kanban, Onboarding, Actions de Formation, Formateurs, Dossiers Clôturés)
-- ✅ Sidebar 3 zones (Actif / Administration / Historique)
-- ✅ Drag & drop Kanban + boutons "Avancer" / "Marquer comme réglé"
-- ✅ Panel détail stagiaire (édition inline + upload des 4 types de documents)
-- ✅ Recherche ultra-rapide dossiers clôturés (nom, prénom, OPCO, formateur, formation)
-- ✅ Tests backend pytest 12/12 + tests frontend E2E 8/8
+- ✅ Restauration du repo Blade Academy GitHub
+- ✅ Backend `routes/dossiers.py` : CRUD + workflow + upload local
+- ✅ Sidebar 4 zones (Espace Actif bleu / Données / Espace Historique ambre / Config)
+- ✅ Page `/kanban` — 5 colonnes drag & drop + boutons Avancer / Marquer réglé
+- ✅ Page `/onboarding` — formulaire rapide (14 champs)
+- ✅ Page `/actions` — fiches individuelles + drawer édition + upload docs
+- ✅ Page `/archives` — recherche ultra-rapide + drawer readonly
+- ✅ Composant `DossierDrawer` partagé (mode edit / readonly)
+- ✅ Tests : 26/26 pytest backend + E2E frontend complet (login → onboarding → kanban → avancer×4 → réglé → archives → recherche)
 
-## Backlog
-- P1 : Authentification (JWT ou Emergent Google) si déploiement multi-utilisateur
-- P2 : Export CSV/Excel des dossiers clôturés
-- P2 : Stats avancées (CA par financeur, durée moyenne par étape)
-- P2 : Relances automatiques par email pour devis en attente
-- P3 : Pièces jointes par drag-and-drop sur les cartes Kanban
-- P3 : Mode dark
+## Backlog (suggestions du testing agent)
+- Dénormaliser `formateur_nom` sur le dossier pour accélérer `/dossiers/closed?q=`
+- Remplacer le date input HTML5 par le composant Calendar shadcn (cohérence UX)
+- Limiter taille/MIME des uploads (DoS hardening)
+- Pagination des `/dossiers/*` lorsque > 5000 dossiers
