@@ -68,8 +68,8 @@ export default function EdofImportDialog({ open, onClose, onImported }) {
               <FileArrowUp size={16} weight="bold" />
             </div>
             <div>
-              <div className="text-sm font-bold text-slate-900 font-display">Importer un fichier EDOF</div>
-              <div className="text-[11px] text-slate-500">CSV ou Excel — création automatique des dossiers</div>
+              <div className="text-sm font-bold text-slate-900 font-display">Télécharger un fichier Excel</div>
+              <div className="text-[11px] text-slate-500">.xlsx ou .csv — création automatique des dossiers</div>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="edof-close">
