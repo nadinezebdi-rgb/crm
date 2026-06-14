@@ -26,6 +26,7 @@ from routes.imports import router as imports_router
 from routes.documents import router as documents_router
 from routes.dossiers import router as dossiers_router
 from routes.dossiers_ext import router as dossiers_ext_router
+from routes.library import router as library_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("blade_academy")
@@ -42,6 +43,7 @@ api.include_router(imports_router)
 api.include_router(documents_router)
 api.include_router(dossiers_router)
 api.include_router(dossiers_ext_router)
+api.include_router(library_router)
 
 
 @api.get("/")

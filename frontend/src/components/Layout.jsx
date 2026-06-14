@@ -16,6 +16,7 @@ import {
   CaretRight,
   Archive,
   Question,
+  Folders,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -32,6 +33,7 @@ const NAV = [
   { to: "/kanban", label: "Tableau de Bord", icon: Kanban, testid: "nav-kanban", zone: "actif" },
   { to: "/onboarding", label: "Onboarding", icon: Users, testid: "nav-onboarding", zone: "actif" },
   { to: "/actions", label: "Actions de Formation", icon: ChalkboardTeacher, testid: "nav-actions", zone: "actif" },
+  { to: "/documents", label: "Documents", icon: Folders, testid: "nav-documents", zone: "actif" },
   { to: "/sessions", label: "Sessions", icon: Kanban, testid: "nav-sessions", zone: "data" },
   { to: "/facturation", label: "Facturation CPF", icon: Receipt, testid: "nav-facturation", zone: "data" },
   { to: "/apprenants", label: "Apprenants", icon: Users, testid: "nav-apprenants", zone: "data" },
