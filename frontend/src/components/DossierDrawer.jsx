@@ -124,8 +124,9 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDoc = async (d) => {
     try {
-      const response = await api.get(`/dossier-documents/${d.id}/download`, { responseType: "blob" });
-      const blob = new Blob([response.data], { type: d.content_type || "application/octet-stream" });
+      const res = await fetch(`${api.defaults.baseURL}/dossier-documents/${d.id}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
@@ -141,11 +142,12 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDossierPdf = async () => {
     try {
-      const response = await api.get(`/dossiers/${dossier.id}/pdf`, { responseType: "blob" });
-      const cd = response.headers["content-disposition"] || "";
+      const res = await fetch(`${api.defaults.baseURL}/dossiers/${dossier.id}/pdf`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
       const match = cd.match(/filename="?([^"]+)"?/);
       const filename = match ? match[1] : `dossier_${dossier.nom}_${dossier.prenom}.pdf`;
-      const blob = new Blob([response.data], { type: "application/pdf" });
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;

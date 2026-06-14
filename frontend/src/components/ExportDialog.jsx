@@ -14,13 +14,13 @@ export default function ExportDialog({ open, onClose }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const url = `/dossiers-admin/export?format=${format}&scope=${scope}`;
-      const response = await api.get(url, { responseType: "blob" });
-      // Extract filename from Content-Disposition
-      const cd = response.headers["content-disposition"] || "";
+      const url = `${API_BASE}/dossiers-admin/export?format=${format}&scope=${scope}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cd = res.headers.get("content-disposition") || "";
       const match = cd.match(/filename="?([^"]+)"?/);
       const filename = match ? match[1] : `export.${format}`;
-      const blob = new Blob([response.data]);
+      const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
