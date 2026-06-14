@@ -15,6 +15,7 @@ import {
   SignOut,
   CaretRight,
   Archive,
+  Question,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -39,6 +40,7 @@ const NAV = [
   { to: "/financeurs", label: "Financeurs", icon: Bank, testid: "nav-financeurs", zone: "data" },
   { to: "/lieux", label: "Lieux", icon: MapPin, testid: "nav-lieux", zone: "data" },
   { to: "/archives", label: "Dossiers Clôturés", icon: Archive, testid: "nav-archives", zone: "historique" },
+  { to: "/guide", label: "Guide d'utilisation", icon: Question, testid: "nav-guide", zone: "aide" },
   { to: "/parametres", label: "Paramètres", icon: Gear, testid: "nav-parametres", zone: "config" },
 ];
 
@@ -74,6 +76,10 @@ export default function Layout() {
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-amber-400 font-bold">Espace Historique</div>
           {NAV.filter((n) => n.zone === "historique").map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-blue-400 font-bold">Aide</div>
+          {NAV.filter((n) => n.zone === "aide").map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
           <div className="px-3 pt-5 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Config</div>

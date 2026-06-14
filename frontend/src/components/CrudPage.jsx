@@ -23,7 +23,7 @@ import Pagination from "@/components/Pagination";
  * Props:
  *  - title, subtitle, endpoint, columns, fields, blank, badges?
  */
-export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid, extraActions, rowHref }) {
+export default function CrudPage({ title, subtitle, endpoint, columns, fields, blank, badges, testid, extraActions, rowHref, headerBanner }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +83,7 @@ export default function CrudPage({ title, subtitle, endpoint, columns, fields, b
 
   return (
     <div className="p-6 lg:p-8" data-testid={testid}>
+      {headerBanner}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
           <div className="text-xs font-semibold uppercase tracking-widest text-brand-700">Données</div>

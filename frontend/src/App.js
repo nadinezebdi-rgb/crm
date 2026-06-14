@@ -21,6 +21,7 @@ import Facturation from "@/pages/Facturation";
 import ApprenantDetail from "@/pages/ApprenantDetail";
 import Apprenants from "@/pages/Apprenants";
 import Formateurs from "@/pages/Formateurs";
+import Guide from "@/pages/Guide";
 import Entreprises from "@/pages/Entreprises";
 import Financeurs from "@/pages/Financeurs";
 import Lieux from "@/pages/Lieux";
@@ -108,6 +109,7 @@ function AppRouter() {
         <Route path="/financeurs" element={<Financeurs />} />
         <Route path="/lieux" element={<Lieux />} />
         <Route path="/parametres" element={<Parametres />} />
+        <Route path="/guide" element={<Guide />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
