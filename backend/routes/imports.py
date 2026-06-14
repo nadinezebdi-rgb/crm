@@ -150,7 +150,7 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
             "statut_reglement": val(row, "statut_reglement") or "Inconnu",
             "date_reglement": parse_date_fr(val(row, "date_reglement")),
             "en_controle": val(row, "en_controle").upper().startswith("O"),
-            "updated_at": now_utc().isoformat(),
+            "updated_at": deps.now_utc().isoformat(),
         }
         key = {"numero_facture": numero_facture} if numero_facture else {
             "numero_dossier": numero_dossier, "montant": doc["montant"], "date_emission": doc["date_emission"],
@@ -260,7 +260,7 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(deps.get_cur
         if dossier and dossier in dossier_to_apprenant:
             g["apprenant_ids"].add(dossier_to_apprenant[dossier])
 
-    today_iso = now_utc().date().isoformat()
+    today_iso = deps.now_utc().date().isoformat()
     stats = {"sessions_creees": 0, "sessions_maj": 0, "details": []}
 
     for mois, g in sorted(groupes.items()):
