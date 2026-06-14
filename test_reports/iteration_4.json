@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 4 — Validated end-to-end the NEW Export EDOF (CSV/XLSX), Reset (renamed from Vider), Dossier PDF generation, and AI PDF extraction (Claude Haiku 4.5 + regex fallback). Backend: 21/21 NEW tests in /app/backend/tests/test_dossiers_ext.py PASS (export CSV/XLSX with styled header, scope all/active/closed enforced, format/scope regex validation -> 422, /api/dossiers/{id}/pdf returns valid PDF (>1KB) with Identité/Formation/Financement sections, 404 on unknown dossier, /api/dossiers/extract-pdf with LLM Claude Haiku returns llm_used=true and ALL fields detected (nom MARTIN, prenom Sophie, date 1985-06-15 normalized, email, phone, Anglais B2), 15 MB cap enforced, non-PDF rejected, /api/dossiers/{id}/extract-and-fill correctly preserves existing email (preexisting@example.com kept) and DOES overwrite formation when a niveau Anglais is detected, all endpoints 401 without auth, regression OK on /api/dossiers/active, /api/sessions, /api/formateurs, /api/auth/login, /api/dossiers-admin/clear and import-edof). Frontend E2E (Playwright with API-driven login + cookies): 4 buttons on /kanban (Importer EDOF, Export EDOF, Reset, Nouveau stagiaire) all data-testids found and visible; Export dialog opens with format-xlsx/csv + scope-all/active/closed + submit, real .xlsx download captured (5277 bytes, correct filename export_edof_all_YYYYMMDD_HHMM.xlsx); Reset dialog correctly REQUIRES typing literal 'RESET' (verified: empty/WRONG/SUPPRIMER keep submit disabled, only 'RESET' enables — confirms rename from SUPPRIMER); DossierDrawer on /actions shows drawer-extract-pdf (Charger PDF, purple) + drawer-download-pdf (PDF, gray) + Éditer + close, PDF download captured (dossier_DRAWER_TEST2_Demo.pdf, 2547 bytes, valid); Formation input has datalist with the 6 niveaux Anglais A1..C2 in both Onboarding and DossierDrawer.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/dossiers/extract-pdf", "issue": "When upload is too large (>15 MB) the multipart body is FULLY read before the size check. This means the server has to buffer 15+ MB before returning 400. Consider Content-Length pre-check or streaming. Non-blocking."},
+      {"endpoint": "GET /api/dossiers-admin/export", "issue": "openpyxl Workbook is built fully in memory then streamed — for very large exports (>10k rows) memory pressure could grow. Acceptable for CRM scale but worth noting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DossierDrawer header", "issues": ["Confirmed correct order: Charger PDF (violet, Sparkle) | PDF (gris, FilePdf) | Éditer | Trash | X. In readonly mode only PDF and X are visible — matches spec."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dossiers_ext.py",
+    "/app/test_reports/pytest/dossiers_ext_results.xml",
+    "/app/test_reports/pytest/iteration4_full.xml"
+  ],
+  "action_items": [
+    "(Stale tests — NOT iteration 4) /app/backend/tests/test_blade_academy.py has 16 failing tests for facturesCPF / EdofGroupement / multi-doc PDF generation (convention/contrat/convocation/attestation/facture/emargement/programme/evaluation) and TestGenererSessionsDepuisFacturesCPF. These expect seeded factures and document templates that no longer exist; they predate iteration 4 and are unrelated to its scope. Either delete these obsolete tests or re-seed the required fixtures.",
+    "(Optional, hardening) On /api/dossiers/extract-pdf: check Content-Length BEFORE reading the body to avoid buffering 15MB before returning 400.",
+    "(Pre-existing from iteration 3) Replace native date input on Onboarding with shadcn Calendar."
+  ],
+  "critical_code_review_comments": [
+    "routes/dossiers_ext.py: clean separation of concerns. _llm_extract correctly catches import errors and missing EMERGENT_LLM_KEY and degrades to regex fallback — no crash if the LLM is down.",
+    "_llm_extract: result is JSON.loads'd after stripping ```json fences. Good defensive parsing. Tested live: llm_used=true with the test PDF.",
+    "extract-and-fill correctly applies the 'only fill if empty' policy for nom/prenom/date_naissance/adresse/email/telephone, but DOES overwrite formation when a niveau Anglais is detected — matches spec exactly.",
+    "Export CSV uses utf-8-sig (BOM) + ';' delimiter — opens cleanly in Excel FR. Verified.",
+    "Export XLSX header styled with bold white text on #0F172A fill, freeze_panes='A2', and column widths set — pro-grade output. Verified via openpyxl in test.",
+    "Both /api/dossiers/{id}/pdf and extract-pdf use _id projection {'_id':0} — no Mongo ObjectId leakage. Good.",
+    "Regex fallback _detect_phone matches '+33...' and '0X XX XX XX XX' — robust.",
+    "test_blade_academy.py is stale and should be cleaned up to keep CI green."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dossiers_ext.py (NEW — 21 tests, all PASS)"
+  ],
+  "success_rate": {
+    "backend": "100% on iteration 4 scope (21/21 new + dossiers/EDOF/auth regression PASS). 16 failures in test_blade_academy.py are pre-existing/unrelated stale tests.",
+    "frontend": "100% on iteration 4 scope (4 Kanban buttons, Export dialog + xlsx download, Reset dialog with 'RESET' confirmation, DossierDrawer Charger PDF + PDF buttons + actual PDF download, datalist Anglais A1..C2)."
+  },
+  "test_credentials": "admin@blade-academy.fr / admin123",
+  "seed_data_creation": "Each test creates TEST_PDF / TEST_FILL / DRAWER_TEST2 dossiers via API and deletes them afterwards. DB left clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 4 fully validated. Test file: /app/backend/tests/test_dossiers_ext.py (21 tests). Use api-driven login + page.context.add_cookies for Playwright to avoid login-form flakiness. Drawer is reached from /actions (not /kanban directly — kanban cards open the drawer too but are simpler to test on /actions where there's a single list view). Stagiaire PDF for testing is built in-memory with reportlab in _build_test_pdf(). Stale tests in test_blade_academy.py need pruning.",
+  "rca of the issue": "No product issue. The 16 failures in test_blade_academy.py are unrelated stale tests from previous iterations that depend on fixtures (facturesCPF, document templates) no longer maintained — they predate iteration 4 entirely and need cleanup or re-seeding. Iteration 4 scope is GREEN end-to-end."
+}

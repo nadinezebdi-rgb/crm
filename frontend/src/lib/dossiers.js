@@ -37,6 +37,15 @@ export const DOC_TYPES = [
   { id: "justificatif_paiement", label: "Justificatif de paiement" },
 ];
 
+export const NIVEAUX_ANGLAIS = [
+  "Anglais A1",
+  "Anglais A2",
+  "Anglais B1",
+  "Anglais B2",
+  "Anglais C1",
+  "Anglais C2",
+];
+
 export const DOC_TYPE_LABEL = Object.fromEntries(DOC_TYPES.map((d) => [d.id, d.label]));
 
 export function formatDate(value) {
