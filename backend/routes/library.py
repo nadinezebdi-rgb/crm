@@ -72,19 +72,69 @@ async def list_library(
     q: Optional[str] = None,
     user: dict = Depends(deps.get_current_user),
 ):
-    """Liste les documents de la bibliothèque (filtrage par scope, type, recherche texte)."""
-    query: dict = {}
-    if scope == "unattached":
-        query["$or"] = [{"dossier_id": None}, {"dossier_id": {"$exists": False}}]
-    elif scope == "attached":
-        query["dossier_id"] = {"$nin": [None, ""]}
-    if type and type in DOC_TYPE_LABEL:
-        query["type"] = type
-    if q:
-        regex = {"$regex": q, "$options": "i"}
-        query["original_filename"] = regex
+    """Liste les documents avec recherche multi-champs :
+    - nom de fichier
+    - nom / prénom du stagiaire rattaché
+    - n° de dossier CPF du stagiaire (financeur_nom)
+    - n° de facture (via collection factures_cpf liée par dossier_cpf)
+    """
+    import re as _re
 
-    docs = await deps.db.dossier_documents.find(query, {"_id": 0}).sort("uploaded_at", -1).to_list(5000)
+    base_query: dict = {}
+    if scope == "unattached":
+        base_query["$or"] = [{"dossier_id": None}, {"dossier_id": {"$exists": False}}]
+    elif scope == "attached":
+        base_query["dossier_id"] = {"$nin": [None, ""]}
+    if type and type in DOC_TYPE_LABEL:
+        base_query["type"] = type
+
+    docs = await deps.db.dossier_documents.find(base_query, {"_id": 0}).sort("uploaded_at", -1).to_list(5000)
+
+    if q:
+        term = q.strip().lower()
+        # Récupère les dossiers stagiaires qui matchent le terme (nom, prénom, financeur_nom)
+        dossier_match_ids = set()
+        async for d in deps.db.dossiers.find(
+            {"$or": [
+                {"nom": {"$regex": _re.escape(q), "$options": "i"}},
+                {"prenom": {"$regex": _re.escape(q), "$options": "i"}},
+                {"financeur_nom": {"$regex": _re.escape(q), "$options": "i"}},
+            ]},
+            {"_id": 0, "id": 1},
+        ):
+            dossier_match_ids.add(d["id"])
+
+        # Récupère les n° de dossier CPF depuis les factures_cpf qui matchent le numero_facture
+        # Liaison facture → apprenant.dossier_cpf → dossier (financeur_nom)
+        cpf_dossier_numbers = set()
+        async for f in deps.db.factures_cpf.find(
+            {"$or": [
+                {"numero_facture": {"$regex": _re.escape(q), "$options": "i"}},
+                {"numero_dossier": {"$regex": _re.escape(q), "$options": "i"}},
+            ]},
+            {"_id": 0, "numero_dossier": 1},
+        ):
+            if f.get("numero_dossier"):
+                cpf_dossier_numbers.add(f["numero_dossier"])
+
+        # Mappe les n° dossier CPF vers les dossiers stagiaires (via financeur_nom)
+        if cpf_dossier_numbers:
+            async for d in deps.db.dossiers.find(
+                {"financeur_nom": {"$in": list(cpf_dossier_numbers)}},
+                {"_id": 0, "id": 1},
+            ):
+                dossier_match_ids.add(d["id"])
+
+        filtered = []
+        for doc in docs:
+            fname = (doc.get("original_filename") or "").lower()
+            did = doc.get("dossier_id")
+            if term in fname:
+                filtered.append(doc)
+            elif did and did in dossier_match_ids:
+                filtered.append(doc)
+        docs = filtered
+
     return await _enrich_with_stagiaire(docs)
 
 
@@ -247,4 +297,20 @@ async def download_library_doc(document_id: str, user: dict = Depends(deps.get_c
         path=str(fpath),
         media_type=doc.get("content_type", "application/octet-stream"),
         filename=doc.get("original_filename", doc["filename"]),
+    )
+
+
+@router.get("/library/{document_id}/preview")
+async def preview_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
+    """Renvoie le fichier en mode inline (pour aperçu navigateur, PDF/image)."""
+    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document introuvable")
+    fpath = UPLOAD_DIR / doc["filename"]
+    if not fpath.exists():
+        raise HTTPException(404, "Fichier manquant sur le disque")
+    return FileResponse(
+        path=str(fpath),
+        media_type=doc.get("content_type", "application/octet-stream"),
+        headers={"Content-Disposition": f'inline; filename="{doc.get("original_filename", doc["filename"])}"'},
     )

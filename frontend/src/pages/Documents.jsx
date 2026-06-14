@@ -19,7 +19,9 @@ import {
   Spinner,
   Receipt,
   CheckCircle,
+  Eye,
 } from "@phosphor-icons/react";
+import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 
 const DOC_TYPES = [
   { id: "facture", label: "Facture" },
@@ -155,6 +157,7 @@ export default function Documents() {
   const [uploadType, setUploadType] = useState("facture");
   const [selected, setSelected] = useState(new Set());
   const [attachFor, setAttachFor] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -339,15 +342,25 @@ export default function Documents() {
       {/* Filters + Search */}
       <div className="px-8 pt-5 pb-3">
         <div className="bg-white border border-slate-200 rounded-md p-3 flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[280px]">
             <MagnifyingGlass size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
             <input
-              placeholder="Rechercher par nom de fichier…"
+              placeholder="Rechercher par nom de fichier, stagiaire, n° dossier CPF, n° facture…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               data-testid="lib-search"
-              className="h-9 pl-8 pr-3 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 outline-none"
+              className="h-9 pl-8 pr-8 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 outline-none"
             />
+            {q && (
+              <button
+                onClick={() => setQ("")}
+                data-testid="lib-search-clear"
+                className="absolute right-2 top-2 h-5 w-5 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded"
+                title="Effacer la recherche"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
           <div className="inline-flex p-0.5 bg-slate-100 rounded-md">
             {[
@@ -439,7 +452,14 @@ export default function Documents() {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
                         {fileIcon(d.original_filename, d.content_type)}
-                        <span className="font-medium text-slate-900 truncate max-w-[280px]" title={d.original_filename}>{d.original_filename}</span>
+                        <button
+                          onClick={() => setPreviewDoc(d)}
+                          data-testid={`lib-name-${d.id}`}
+                          title="Ouvrir l'aperçu"
+                          className="font-medium text-slate-900 truncate max-w-[280px] text-left hover:text-navy hover:underline"
+                        >
+                          {d.original_filename}
+                        </button>
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
@@ -467,11 +487,12 @@ export default function Documents() {
                     <td className="px-3 py-2.5 text-slate-600 text-xs whitespace-nowrap">{fmtDate(d.uploaded_at)}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1">
+                        <button onClick={() => setPreviewDoc(d)} title="Aperçu" data-testid={`lib-view-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-navy hover:bg-blue-50 rounded"><Eye size={14} weight="bold" /></button>
                         <button onClick={() => downloadDoc(d)} title="Télécharger" data-testid={`lib-dl-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"><DownloadSimple size={14} /></button>
                         {d.stagiaire ? (
                           <button onClick={() => detachOne(d)} title="Détacher du stagiaire" data-testid={`lib-detach-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded"><LinkBreak size={14} /></button>
                         ) : (
-                          <button onClick={() => setAttachFor(d)} title="Rattacher" data-testid={`lib-attach-icon-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-navy hover:bg-blue-50 rounded"><LinkIcon size={14} /></button>
+                          <button onClick={() => setAttachFor(d)} title="Rattacher" data-testid={`lib-attach-icon-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded"><LinkIcon size={14} /></button>
                         )}
                         <button onClick={() => deleteOne(d)} title="Supprimer" data-testid={`lib-del-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded"><Trash size={14} /></button>
                       </div>
@@ -488,6 +509,7 @@ export default function Documents() {
       </div>
 
       <AttachDialog open={!!attachFor} document={attachFor} onClose={() => setAttachFor(null)} onAttached={load} />
+      <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={load} />
     </div>
   );
 }
