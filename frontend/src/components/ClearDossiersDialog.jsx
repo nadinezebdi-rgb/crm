@@ -10,7 +10,7 @@ export default function ClearDossiersDialog({ open, onClose, onCleared }) {
 
   if (!open) return null;
 
-  const expected = "SUPPRIMER";
+  const expected = "RESET";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -49,8 +49,8 @@ export default function ClearDossiersDialog({ open, onClose, onCleared }) {
               <Trash size={15} weight="bold" />
             </div>
             <div>
-              <div className="text-sm font-bold text-slate-900 font-display">Vider les dossiers</div>
-              <div className="text-[11px] text-slate-500">Action irréversible</div>
+              <div className="text-sm font-bold text-slate-900 font-display">Reset des dossiers</div>
+              <div className="text-[11px] text-slate-500">Supprime tout — compteurs à zéro</div>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="clear-close">
@@ -62,7 +62,7 @@ export default function ClearDossiersDialog({ open, onClose, onCleared }) {
           <div className="p-3 bg-red-50 border border-red-200 rounded-md flex gap-2.5">
             <Warning size={18} weight="duotone" className="text-red-600 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-red-900">
-              Cette action <strong>supprime définitivement</strong> les dossiers stagiaires et leurs documents (devis, factures…). Aucune restauration possible.
+              Cette action <strong>supprime définitivement</strong> les dossiers stagiaires et leurs documents (devis, factures…). Tous les compteurs reviendront à zéro. Aucune restauration possible.
             </div>
           </div>
 
@@ -114,7 +114,7 @@ export default function ClearDossiersDialog({ open, onClose, onCleared }) {
             <button type="submit" disabled={loading || confirmText !== expected} data-testid="clear-submit"
               className="h-9 px-5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md inline-flex items-center gap-2 disabled:opacity-50">
               {loading ? <Spinner size={14} className="animate-spin" /> : <Trash size={14} weight="bold" />}
-              Supprimer définitivement
+              Reset
             </button>
           </div>
         </form>

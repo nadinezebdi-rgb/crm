@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
-import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, formatDate, formatSize } from "@/lib/dossiers";
+import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, NIVEAUX_ANGLAIS, formatDate, formatSize } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
 import { toast } from "sonner";
-import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner } from "@phosphor-icons/react";
+import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle } from "@phosphor-icons/react";
 
 function Info({ label, value, colSpan }) {
   return (
@@ -20,6 +20,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(dossier);
   const [uploading, setUploading] = useState(null);
+  const [extracting, setExtracting] = useState(false);
 
   const readonly = mode === "readonly";
 
@@ -126,6 +127,57 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
     window.open(url, "_blank");
   };
 
+  const downloadDossierPdf = async () => {
+    try {
+      const response = await api.get(`/dossiers/${dossier.id}/pdf`, { responseType: "blob" });
+      const cd = response.headers["content-disposition"] || "";
+      const match = cd.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `dossier_${dossier.nom}_${dossier.prenom}.pdf`;
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(objUrl);
+      toast.success("PDF du dossier téléchargé");
+    } catch (e) {
+      toast.error("Erreur lors de la génération du PDF");
+    }
+  };
+
+  const extractFromPdf = async (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Format PDF requis");
+      return;
+    }
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post(`/dossiers/${dossier.id}/extract-and-fill`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const applied = data.applied_updates || {};
+      const fields = Object.keys(applied).filter((k) => k !== "updated_at");
+      if (fields.length === 0) {
+        toast.info("Aucun nouveau champ détecté (le dossier était déjà complet)");
+      } else {
+        toast.success(
+          `Champs mis à jour : ${fields.join(", ")}${data.llm_used ? " · via IA" : " · via regex"}`
+        );
+      }
+      onUpdated && onUpdated();
+      // Met à jour le form local
+      if (data.dossier) setForm(data.dossier);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Erreur d'extraction PDF");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const inputCls =
     "h-9 w-full text-sm border border-slate-300 rounded-md px-3 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white";
 
@@ -150,6 +202,33 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!readonly && (
+              <>
+                <label
+                  data-testid="drawer-extract-pdf"
+                  title="Charger un dossier PDF — extraction IA des coordonnées"
+                  className="h-8 px-3 text-xs font-medium text-purple-700 border border-purple-200 bg-purple-50 hover:bg-purple-100 rounded-md inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  {extracting ? <Spinner size={13} className="animate-spin" /> : <Sparkle size={13} weight="bold" />}
+                  Charger PDF
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    hidden
+                    disabled={extracting}
+                    onChange={(e) => extractFromPdf(e.target.files?.[0])}
+                  />
+                </label>
+              </>
+            )}
+            <button
+              onClick={downloadDossierPdf}
+              data-testid="drawer-download-pdf"
+              title="Télécharger le dossier en PDF"
+              className="h-8 px-3 text-xs font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 inline-flex items-center gap-1.5"
+            >
+              <FilePdf size={13} weight="bold" /> PDF
+            </button>
             {!readonly && (
               <>
                 {editing ? (
@@ -252,7 +331,16 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Formation</label>
-                    <input className={inputCls} value={form.formation || ""} onChange={(e) => set("formation", e.target.value)} />
+                    <input
+                      className={inputCls}
+                      list="formation-niveaux"
+                      value={form.formation || ""}
+                      onChange={(e) => set("formation", e.target.value)}
+                      placeholder="Ex: Anglais B1"
+                    />
+                    <datalist id="formation-niveaux">
+                      {NIVEAUX_ANGLAIS.map((n) => <option key={n} value={n} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Début formation</label>

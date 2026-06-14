@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
-import { FINANCEUR_TYPES } from "@/lib/dossiers";
+import { FINANCEUR_TYPES, NIVEAUX_ANGLAIS } from "@/lib/dossiers";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { UserPlus, FloppyDisk, Spinner } from "@phosphor-icons/react";
@@ -133,7 +133,17 @@ export default function Onboarding() {
             </div>
             <div>
               <label className={labelCls}>Intitulé formation</label>
-              <input data-testid="onboarding-input-formation" className={inputCls} value={form.formation} onChange={(e) => set("formation", e.target.value)} placeholder="Ex: Anglais B1" />
+              <input
+                data-testid="onboarding-input-formation"
+                className={inputCls}
+                list="onboarding-niveaux"
+                value={form.formation}
+                onChange={(e) => set("formation", e.target.value)}
+                placeholder="Ex: Anglais B1"
+              />
+              <datalist id="onboarding-niveaux">
+                {NIVEAUX_ANGLAIS.map((n) => <option key={n} value={n} />)}
+              </datalist>
             </div>
             <div className="md:col-span-2">
               <label className={labelCls}>Notes (optionnel)</label>

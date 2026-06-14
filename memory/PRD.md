@@ -57,3 +57,17 @@ Dates auto-renseignées :
 - ✅ Frontend : ClearDossiersDialog (3 scopes, confirmation par saisie « SUPPRIMER »)
 - ✅ Frontend : 2 nouveaux boutons sur le Tableau de Bord à côté de "Nouveau stagiaire"
 - ✅ Tests : 35/35 pytest backend (9 nouveaux + 26 régression)
+
+## Itération 4 (14 Jan 2026) — Reset + Export EDOF + PDF + Extraction IA
+- ✅ Backend NEW : /api/dossiers-admin/export?format=csv|xlsx&scope=all|active|closed (CSV BOM + Excel stylé)
+- ✅ Backend NEW : /api/dossiers/{id}/pdf (génération PDF via reportlab : Identité + Formation + Financement + Documents)
+- ✅ Backend NEW : /api/dossiers/extract-pdf (preview) + /api/dossiers/{id}/extract-and-fill (auto-remplissage)
+- ✅ Extraction IA via Claude Haiku 4.5 (emergentintegrations) + fallback regex robuste
+- ✅ Détection auto du niveau Anglais (A1/A2/B1/B2/C1/C2) + normalisation date YYYY-MM-DD
+- ✅ Politique de remplissage : champs vides uniquement (préserve donnée existante) SAUF formation (écrasée si niveau Anglais détecté)
+- ✅ Frontend : 4 boutons sur Kanban (Importer EDOF / Export EDOF vert / Reset rouge / Nouveau stagiaire)
+- ✅ Frontend : Reset renommé (confirmation par saisie « RESET »)
+- ✅ Frontend : DossierDrawer avec boutons « Charger PDF » (violet, IA) + « PDF » (gris, download)
+- ✅ Frontend : datalist niveaux Anglais sur champs Formation (Onboarding + Drawer)
+- ✅ Tests : 21/21 backend pytest PASS + E2E frontend complet (xlsx download capturé, PDF généré, RESET validé)
+- 🧹 Nettoyage : suppression des stubs locaux /app/backend/emergentintegrations et /app/backend/litellm qui shadowed le vrai package
