@@ -9,7 +9,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from openpyxl import Workbook
 from pypdf import PdfReader
 from reportlab.lib.pagesizes import A4
@@ -113,10 +113,14 @@ async def export_dossiers(
             writer.writerow([_cell(d, key) for key, _ in EXPORT_COLUMNS])
         data = buf.getvalue().encode("utf-8-sig")  # BOM pour Excel
         filename = f"export_edof_{scope}_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.csv"
-        return StreamingResponse(
-            io.BytesIO(data),
+        return Response(
+            content=data,
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(data)),
+                "Cache-Control": "no-store",
+            },
         )
 
     # Excel
@@ -140,12 +144,16 @@ async def export_dossiers(
 
     out = io.BytesIO()
     wb.save(out)
-    out.seek(0)
+    data = out.getvalue()
     filename = f"export_edof_{scope}_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
-    return StreamingResponse(
-        out,
+    return Response(
+        content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -271,12 +279,16 @@ async def dossier_pdf(dossier_id: str, user: dict = Depends(deps.get_current_use
     ))
 
     doc.build(story)
-    buf.seek(0)
+    data = buf.getvalue()
     filename = f"dossier_{d.get('nom', 'stagiaire')}_{d.get('prenom', '')}.pdf".replace(" ", "_")
-    return StreamingResponse(
-        buf,
+    return Response(
+        content=data,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
