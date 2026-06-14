@@ -291,6 +291,8 @@ async def clear_all_dossiers(
     user: dict = Depends(deps.get_current_user),
 ):
     """Supprime TOUS les dossiers + leurs documents (action irréversible)."""
+    if scope not in ("all", "active", "closed"):
+        raise HTTPException(400, "scope invalide : utilisez 'all', 'active' ou 'closed'")
     query: dict = {}
     if scope == "active":
         query = {"status": {"$ne": "regle"}}
@@ -354,6 +356,8 @@ async def import_edof_dossiers(
         raise HTTPException(400, str(exc))
     if not rows:
         raise HTTPException(400, "Aucune ligne de données détectée")
+    if default_financeur not in ("OPCO", "CPF", "Privé"):
+        raise HTTPException(400, "default_financeur invalide : utilisez 'OPCO', 'CPF' ou 'Privé'")
 
     mapping = auto_map(columns)
     if not mapping.get("nom") or not mapping.get("prenom"):
@@ -382,7 +386,7 @@ async def import_edof_dossiers(
             continue
 
         formation_libre = cell(row, "formation") or default_formation
-        financeur_type = default_financeur if default_financeur in ("OPCO", "CPF", "Privé") else "CPF"
+        financeur_type = default_financeur
         financeur_nom = cell(row, "dossier") or None  # n° de dossier CPF si présent
 
         dossier = {
