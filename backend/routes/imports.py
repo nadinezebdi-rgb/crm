@@ -2,7 +2,7 @@
 import re
 import uuid
 from typing import Optional, Dict
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query, Body
 
 import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
@@ -150,7 +150,7 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
             "statut_reglement": val(row, "statut_reglement") or "Inconnu",
             "date_reglement": parse_date_fr(val(row, "date_reglement")),
             "en_controle": val(row, "en_controle").upper().startswith("O"),
-            "updated_at": now_utc().isoformat(),
+            "updated_at": deps.now_utc().isoformat(),
         }
         key = {"numero_facture": numero_facture} if numero_facture else {
             "numero_dossier": numero_dossier, "montant": doc["montant"], "date_emission": doc["date_emission"],
@@ -181,6 +181,31 @@ async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends
         linked = apprenants_map.get(f.get("numero_dossier"))
         f["apprenant"] = {"id": linked["id"], "nom": linked["nom"], "prenom": linked["prenom"]} if linked else None
     return factures
+
+
+@router.delete("/factures-cpf/bulk")
+async def delete_factures_cpf_bulk(payload: dict = Body(...), user: dict = Depends(deps.get_current_user)):
+    """Suppression en masse par liste d'IDs."""
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "Liste 'ids' requise et non vide")
+    res = await deps.db.factures_cpf.delete_many({"id": {"$in": ids}})
+    return {"deleted": res.deleted_count}
+
+
+@router.delete("/factures-cpf/all")
+async def delete_all_factures_cpf(user: dict = Depends(deps.get_current_user)):
+    """Supprime TOUTES les factures CPF (reset complet)."""
+    res = await deps.db.factures_cpf.delete_many({})
+    return {"deleted": res.deleted_count}
+
+
+@router.delete("/factures-cpf/{facture_id}")
+async def delete_facture_cpf(facture_id: str, user: dict = Depends(deps.get_current_user)):
+    res = await deps.db.factures_cpf.delete_one({"id": facture_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Facture introuvable")
+    return {"deleted": 1}
 
 
 @router.get("/factures-cpf/stats")
@@ -260,7 +285,7 @@ async def generer_sessions_depuis_factures_cpf(user: dict = Depends(deps.get_cur
         if dossier and dossier in dossier_to_apprenant:
             g["apprenant_ids"].add(dossier_to_apprenant[dossier])
 
-    today_iso = now_utc().date().isoformat()
+    today_iso = deps.now_utc().date().isoformat()
     stats = {"sessions_creees": 0, "sessions_maj": 0, "details": []}
 
     for mois, g in sorted(groupes.items()):

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import CrudPage from "@/components/CrudPage";
 import ImportEdofDialog from "@/components/ImportEdofDialog";
+import DocumentDemoBanner from "@/components/DocumentDemoBanner";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export default function Apprenants() {
       endpoint="apprenants"
       testid="apprenants-page"
       rowHref={(it) => `/apprenants/${it.id}`}
+      headerBanner={<DocumentDemoBanner />}
       extraActions={(reload) => (
         <>
           <ResetEdofButton onDone={reload} />

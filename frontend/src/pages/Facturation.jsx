@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus } from "@phosphor-icons/react";
+import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus, Trash, X } from "@phosphor-icons/react";
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import Pagination from "@/components/Pagination";
 
@@ -30,7 +30,79 @@ export default function Facturation() {
   const [generating, setGenerating] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [selected, setSelected] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef(null);
+
+  const visibleFactures = factures.slice((page - 1) * pageSize, page * pageSize);
+  const allVisibleSelected = visibleFactures.length > 0 && visibleFactures.every((f) => selected.has(f.id));
+
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleFactures.forEach((f) => next.delete(f.id));
+      else visibleFactures.forEach((f) => next.add(f.id));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const deleteOne = async (f) => {
+    if (!window.confirm(`Supprimer la facture ${f.numero_facture || f.numero_dossier || f.id.slice(0, 8)} ?`)) return;
+    try {
+      await api.delete(`/factures-cpf/${f.id}`);
+      toast.success("Facture supprimée");
+      setSelected((prev) => { const n = new Set(prev); n.delete(f.id); return n; });
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Suppression impossible");
+    }
+  };
+
+  const deleteBulk = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Supprimer ${selected.size} facture(s) sélectionnée(s) ? Cette action est irréversible.`)) return;
+    setDeleting(true);
+    try {
+      const { data } = await api.delete("/factures-cpf/bulk", { data: { ids: Array.from(selected) } });
+      toast.success(`${data.deleted} facture(s) supprimée(s)`);
+      clearSelection();
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Suppression impossible");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteAll = async () => {
+    const total = factures.length;
+    const txt = window.prompt(`Cette action va supprimer DÉFINITIVEMENT les ${total} facture(s) CPF. Pour confirmer, tapez SUPPRIMER ci-dessous :`);
+    if (txt !== "SUPPRIMER") {
+      if (txt !== null) toast.error("Confirmation incorrecte");
+      return;
+    }
+    setDeleting(true);
+    try {
+      const { data } = await api.delete("/factures-cpf/all");
+      toast.success(`${data.deleted} facture(s) supprimée(s) — base remise à zéro`);
+      clearSelection();
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Suppression impossible");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -118,6 +190,16 @@ export default function Facturation() {
             />
           </div>
           <Button
+            onClick={deleteAll}
+            disabled={deleting || !factures.length}
+            data-testid="factures-delete-all-btn"
+            variant="outline"
+            className="border-red-200 text-red-700 hover:bg-red-50"
+            title="Supprimer toutes les factures CPF"
+          >
+            <Trash size={16} className="mr-1.5" /> Tout supprimer
+          </Button>
+          <Button
             onClick={generateMonthlySessions}
             disabled={generating || !stats?.nb_factures}
             data-testid="factures-generer-sessions-btn"
@@ -188,23 +270,66 @@ export default function Facturation() {
 
       {/* Tableau */}
       <Card className="border-slate-200 overflow-hidden">
+        {selected.size > 0 && (
+          <div data-testid="factures-bulk-bar" className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2 text-red-900">
+              <span className="font-semibold">{selected.size}</span> facture{selected.size > 1 ? "s" : ""} sélectionnée{selected.size > 1 ? "s" : ""}
+              <button onClick={clearSelection} className="text-red-600 hover:text-red-800 inline-flex items-center gap-1" data-testid="factures-clear-selection">
+                <X size={12} /> désélectionner
+              </button>
+            </div>
+            <Button
+              onClick={deleteBulk}
+              disabled={deleting}
+              data-testid="factures-delete-bulk-btn"
+              className="bg-red-600 hover:bg-red-700 text-white h-8"
+            >
+              <Trash size={14} className="mr-1.5" /> Supprimer la sélection
+            </Button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="factures-table">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
+                <th className="px-3 py-2.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    data-testid="factures-select-all"
+                    aria-label="Tout sélectionner"
+                    className="h-4 w-4 rounded border-slate-300 cursor-pointer"
+                  />
+                </th>
                 {["N° facture", "N° dossier CPF", "Stagiaire", "Montant", "Statut", "Émise le", "Versée le", "Contrôle"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">{h}</th>
                 ))}
+                <th className="px-3 py-2.5 w-12"></th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">Chargement…</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400 text-sm">Chargement…</td></tr>
               ) : factures.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">Aucune facture — importez votre export EDOF.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400 text-sm">Aucune facture — importez votre export EDOF.</td></tr>
               ) : (
-                factures.slice((page - 1) * pageSize, page * pageSize).map((f) => (
-                  <tr key={f.id} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors" data-testid={`facture-row-${f.numero_facture}`}>
+                visibleFactures.map((f) => (
+                  <tr
+                    key={f.id}
+                    className={`border-b border-slate-100 transition-colors ${selected.has(f.id) ? "bg-red-50/40" : "hover:bg-slate-50/60"}`}
+                    data-testid={`facture-row-${f.numero_facture}`}
+                  >
+                    <td className="px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(f.id)}
+                        onChange={() => toggleOne(f.id)}
+                        data-testid={`facture-checkbox-${f.id}`}
+                        aria-label="Sélectionner la facture"
+                        className="h-4 w-4 rounded border-slate-300 cursor-pointer"
+                      />
+                    </td>
                     <td className="px-4 py-2.5 font-medium text-slate-900 whitespace-nowrap">{f.numero_facture || "—"}</td>
                     <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">{f.numero_dossier || "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
@@ -224,6 +349,17 @@ export default function Facturation() {
                     <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(f.date_reglement)}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {f.en_controle ? <Badge className="text-[10px] bg-red-50 text-red-700 border-red-200">En contrôle</Badge> : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <button
+                        onClick={() => deleteOne(f)}
+                        data-testid={`facture-delete-${f.id}`}
+                        className="h-7 w-7 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded transition-colors"
+                        title="Supprimer cette facture"
+                        aria-label="Supprimer"
+                      >
+                        <Trash size={14} />
+                      </button>
                     </td>
                   </tr>
                 ))
