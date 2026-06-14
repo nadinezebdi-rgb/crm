@@ -314,3 +314,86 @@ async def preview_library_doc(document_id: str, user: dict = Depends(deps.get_cu
         media_type=doc.get("content_type", "application/octet-stream"),
         headers={"Content-Disposition": f'inline; filename="{doc.get("original_filename", doc["filename"])}"'},
     )
+
+
+@router.get("/library/{document_id}/preview-html")
+async def preview_library_html(document_id: str, user: dict = Depends(deps.get_current_user)):
+    """Aperçu HTML pour les fichiers Excel et CSV (rendu inline du contenu)."""
+    import csv as _csv
+    from html import escape as _esc
+
+    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document introuvable")
+    fpath = UPLOAD_DIR / doc["filename"]
+    if not fpath.exists():
+        raise HTTPException(404, "Fichier manquant sur le disque")
+
+    ext = (doc.get("original_filename") or "").lower().split(".")[-1]
+    sheets_html = []
+    MAX_ROWS = 500
+    MAX_COLS = 40
+
+    try:
+        if ext in ("xlsx", "xlsm", "xls"):
+            from openpyxl import load_workbook
+            wb = load_workbook(filename=str(fpath), data_only=True, read_only=True)
+            for ws in wb.worksheets:
+                rows_html = []
+                rows_iter = ws.iter_rows(values_only=True)
+                first = True
+                count = 0
+                for row in rows_iter:
+                    if count >= MAX_ROWS:
+                        rows_html.append(f'<tr><td colspan="{MAX_COLS}" class="trunc">… ({MAX_ROWS} lignes affichées sur plus)</td></tr>')
+                        break
+                    cells = list(row)[:MAX_COLS]
+                    if first:
+                        rows_html.append("<thead><tr>" + "".join(f"<th>{_esc(str(c) if c is not None else '')}</th>" for c in cells) + "</tr></thead><tbody>")
+                        first = False
+                    else:
+                        rows_html.append("<tr>" + "".join(f"<td>{_esc(str(c) if c is not None else '')}</td>" for c in cells) + "</tr>")
+                    count += 1
+                if rows_html:
+                    rows_html.append("</tbody>")
+                else:
+                    rows_html.append('<tbody><tr><td class="empty">Feuille vide</td></tr></tbody>')
+                sheets_html.append({
+                    "name": ws.title,
+                    "html": '<table class="xls-table">' + "".join(rows_html) + "</table>",
+                })
+            wb.close()
+        elif ext == "csv":
+            content = fpath.read_bytes()
+            try:
+                text = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = content.decode("latin-1", errors="ignore")
+            # Détecte séparateur
+            sample = text[:4096]
+            delim = ";" if sample.count(";") > sample.count(",") else ","
+            reader = _csv.reader(text.splitlines(), delimiter=delim)
+            rows_html = []
+            for i, row in enumerate(reader):
+                if i >= MAX_ROWS:
+                    rows_html.append(f'<tr><td colspan="{MAX_COLS}" class="trunc">… ({MAX_ROWS} lignes affichées sur plus)</td></tr>')
+                    break
+                cells = row[:MAX_COLS]
+                if i == 0:
+                    rows_html.append("<thead><tr>" + "".join(f"<th>{_esc(c)}</th>" for c in cells) + "</tr></thead><tbody>")
+                else:
+                    rows_html.append("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in cells) + "</tr>")
+            rows_html.append("</tbody>")
+            sheets_html.append({"name": "CSV", "html": '<table class="xls-table">' + "".join(rows_html) + "</table>"})
+        else:
+            raise HTTPException(400, f"Aperçu HTML non disponible pour ce format ({ext})")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Erreur de lecture du fichier : {exc}")
+
+    return {
+        "filename": doc.get("original_filename"),
+        "sheets": sheets_html,
+        "total_sheets": len(sheets_html),
+    }

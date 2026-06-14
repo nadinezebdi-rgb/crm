@@ -28,7 +28,12 @@ function isImage(d) {
 
 function isText(d) {
   const ext = (d?.original_filename || "").split(".").pop().toLowerCase();
-  return ["txt", "csv", "log", "json", "xml", "html", "md"].includes(ext) || (d?.content_type || "").startsWith("text/");
+  return ["txt", "log", "json", "xml", "html", "md"].includes(ext) || ((d?.content_type || "").startsWith("text/") && ext !== "csv");
+}
+
+function isSpreadsheet(d) {
+  const ext = (d?.original_filename || "").split(".").pop().toLowerCase();
+  return ["xlsx", "xlsm", "xls", "csv"].includes(ext);
 }
 
 function fmtSize(b) {
@@ -57,6 +62,8 @@ function fileIcon(d) {
 export default function DocumentPreviewDialog({ open, document, onClose, onAttached, onDeleted }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
+  const [sheets, setSheets] = useState(null);
+  const [activeSheet, setActiveSheet] = useState(0);
   const [loading, setLoading] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [dossiers, setDossiers] = useState([]);
@@ -71,19 +78,35 @@ export default function DocumentPreviewDialog({ open, document, onClose, onAttac
       setLoading(true);
       setBlobUrl(null);
       setTextContent(null);
+      setSheets(null);
+      setActiveSheet(0);
       setAttachOpen(false);
       setAttachQ("");
       try {
-        // Preview the file as blob
-        const res = await api.get(`/library/${document.id}/preview`, { responseType: "blob" });
-        if (cancelled) return;
-        const blob = new Blob([res.data], { type: document.content_type || "application/octet-stream" });
-        if (isText(document)) {
-          const txt = await blob.text();
-          if (!cancelled) setTextContent(txt.slice(0, 200000));
+        if (isSpreadsheet(document)) {
+          // Aperçu HTML pour Excel/CSV
+          const { data } = await api.get(`/library/${document.id}/preview-html`);
+          if (!cancelled) {
+            setSheets(data.sheets || []);
+            // On charge aussi le blob pour permettre le téléchargement direct depuis l'aperçu
+            const res = await api.get(`/library/${document.id}/preview`, { responseType: "blob" });
+            if (!cancelled) {
+              const blob = new Blob([res.data], { type: document.content_type || "application/octet-stream" });
+              createdUrl = URL.createObjectURL(blob);
+              setBlobUrl(createdUrl);
+            }
+          }
         } else {
-          createdUrl = URL.createObjectURL(blob);
-          if (!cancelled) setBlobUrl(createdUrl);
+          const res = await api.get(`/library/${document.id}/preview`, { responseType: "blob" });
+          if (cancelled) return;
+          const blob = new Blob([res.data], { type: document.content_type || "application/octet-stream" });
+          if (isText(document)) {
+            const txt = await blob.text();
+            if (!cancelled) setTextContent(txt.slice(0, 200000));
+          } else {
+            createdUrl = URL.createObjectURL(blob);
+            if (!cancelled) setBlobUrl(createdUrl);
+          }
         }
       } catch (e) {
         if (!cancelled) toast.error("Aperçu indisponible");
@@ -164,6 +187,42 @@ export default function DocumentPreviewDialog({ open, document, onClose, onAttac
       return (
         <div className="flex items-center justify-center w-full h-full bg-slate-100 p-4 overflow-auto">
           <img src={blobUrl} alt={document.original_filename} data-testid="preview-image" className="max-w-full max-h-full object-contain shadow" />
+        </div>
+      );
+    }
+    if (sheets && sheets.length > 0) {
+      const current = sheets[activeSheet] || sheets[0];
+      return (
+        <div data-testid="preview-spreadsheet" className="w-full h-full flex flex-col bg-white">
+          {sheets.length > 1 && (
+            <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200 overflow-x-auto">
+              {sheets.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveSheet(i)}
+                  data-testid={`preview-sheet-${i}`}
+                  className={`text-xs px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+                    i === activeSheet ? "bg-navy text-white font-semibold" : "text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            className="flex-1 overflow-auto p-4 xls-preview"
+            dangerouslySetInnerHTML={{ __html: current.html }}
+          />
+          <style>{`
+            .xls-preview .xls-table { border-collapse: collapse; font-size: 12px; background: white; }
+            .xls-preview .xls-table thead th { background: #0F172A; color: white; font-weight: 600; padding: 6px 10px; border: 1px solid #1E293B; position: sticky; top: 0; white-space: nowrap; text-align: left; }
+            .xls-preview .xls-table tbody td { padding: 5px 10px; border: 1px solid #E2E8F0; color: #0F172A; vertical-align: top; }
+            .xls-preview .xls-table tbody tr:nth-child(even) td { background: #F8FAFC; }
+            .xls-preview .xls-table tbody tr:hover td { background: #DBEAFE; }
+            .xls-preview .xls-table .trunc { background: #FEF3C7; color: #92400E; font-style: italic; text-align: center; padding: 8px; }
+            .xls-preview .xls-table .empty { color: #94A3B8; font-style: italic; padding: 16px; text-align: center; }
+          `}</style>
         </div>
       );
     }
