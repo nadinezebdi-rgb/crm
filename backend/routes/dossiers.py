@@ -12,10 +12,11 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Literal
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 import deps
+from storage import APP_PREFIX, put_object, get_object
 from import_edof import parse_import_file, auto_map, parse_date_fr
 
 router = APIRouter()
@@ -220,24 +221,30 @@ async def upload_document(
     d = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Dossier introuvable")
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "Fichier vide")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(400, "Fichier trop volumineux (max 25 Mo)")
     doc_id = deps.new_id()
-    ext = Path(file.filename or "").suffix or ""
-    stored_name = f"{doc_id}{ext}"
-    file_path = UPLOAD_DIR / stored_name
-    with file_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-    size = file_path.stat().st_size
+    ext = Path(file.filename or "").suffix.lstrip(".") or "bin"
+    path = f"{APP_PREFIX}/library/{doc_id}.{ext}"
+    try:
+        result = await put_object(path, content, file.content_type or "application/octet-stream")
+    except Exception:
+        raise HTTPException(502, "Stockage indisponible, réessayez")
     document = {
         "id": doc_id,
         "dossier_id": dossier_id,
         "type": type,
-        "filename": stored_name,
-        "original_filename": file.filename or stored_name,
+        "filename": path.split("/")[-1],
+        "original_filename": file.filename or path.split("/")[-1],
         "content_type": file.content_type or "application/octet-stream",
-        "size": size,
+        "size": result.get("size", len(content)),
+        "storage_path": result.get("path", path),
         "uploaded_at": deps.now_utc().isoformat(),
     }
-    await deps.db.dossier_documents.insert_one(document)
+    await deps.db.dossier_documents.insert_one(dict(document))
     document.pop("_id", None)
     return document
 
@@ -247,13 +254,22 @@ async def download_document(document_id: str, user: dict = Depends(deps.get_curr
     d = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Document introuvable")
-    file_path = UPLOAD_DIR / d["filename"]
-    if not file_path.exists():
-        raise HTTPException(404, "Fichier manquant sur le disque")
-    return FileResponse(
-        path=str(file_path),
-        media_type=d.get("content_type", "application/octet-stream"),
-        filename=d.get("original_filename", d["filename"]),
+    path = d.get("storage_path")
+    if not path:
+        raise HTTPException(404, "Fichier introuvable (document antérieur à la migration vers stockage objet)")
+    try:
+        data, ctype = await get_object(path)
+    except Exception:
+        raise HTTPException(502, "Stockage indisponible")
+    filename = d.get("original_filename", d.get("filename", "document"))
+    return Response(
+        content=data,
+        media_type=ctype or d.get("content_type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -262,12 +278,6 @@ async def delete_document(document_id: str, user: dict = Depends(deps.get_curren
     d = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Document introuvable")
-    file_path = UPLOAD_DIR / d["filename"]
-    if file_path.exists():
-        try:
-            file_path.unlink()
-        except Exception:
-            pass
     await deps.db.dossier_documents.delete_one({"id": document_id})
     return {"ok": True}
 

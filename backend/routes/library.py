@@ -1,30 +1,19 @@
 """Bibliothèque centrale de documents (factures, devis, etc.)
 
-Stockage unifié dans la collection `dossier_documents` :
-- `dossier_id = None` → document libre (en attente de rattachement)
-- `dossier_id = "xxx"` → document attaché à un dossier stagiaire
-
-Endpoints :
-- GET    /api/library              → liste filtrable (attached, unattached, type, search)
-- POST   /api/library/upload       → upload (avec dossier_id optionnel)
-- PATCH  /api/library/{id}/attach  → rattacher à un dossier stagiaire
-- PATCH  /api/library/{id}/detach  → détacher (retirer le dossier_id)
-- DELETE /api/library/{id}         → suppression
-- GET    /api/library/{id}/download → téléchargement
+Stockage : Emergent Object Storage (persistant entre les déploiements).
 """
-import shutil
+import logging
 from pathlib import Path
 from typing import Optional, Literal, List
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 import deps
+from storage import APP_PREFIX, put_object, get_object
 
+logger = logging.getLogger("crm.library")
 router = APIRouter()
-
-UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads_dossiers"
-UPLOAD_DIR.mkdir(exist_ok=True)
 
 DocTypeLiteral = Literal["devis_signe", "attestation", "facture", "justificatif_paiement", "autre"]
 
@@ -41,8 +30,20 @@ class AttachPayload(BaseModel):
     dossier_id: str
 
 
+async def _fetch_bytes(doc: dict) -> tuple:
+    """Récupère les bytes + content_type d'un document depuis le stockage objet."""
+    path = doc.get("storage_path")
+    if not path:
+        raise HTTPException(404, "Fichier introuvable (storage_path manquant — document antérieur à la migration objet)")
+    try:
+        data, ctype = await get_object(path)
+    except Exception:
+        logger.exception("Échec de lecture du stockage objet")
+        raise HTTPException(502, "Stockage indisponible, réessayez dans un instant")
+    return data, ctype or doc.get("content_type", "application/octet-stream")
+
+
 async def _enrich_with_stagiaire(docs: List[dict]) -> List[dict]:
-    """Ajoute les infos stagiaire (nom, prénom) sur chaque document attaché."""
     dossier_ids = list({d["dossier_id"] for d in docs if d.get("dossier_id")})
     if not dossier_ids:
         return docs
@@ -54,12 +55,7 @@ async def _enrich_with_stagiaire(docs: List[dict]) -> List[dict]:
         did = doc.get("dossier_id")
         if did and did in mapping:
             d = mapping[did]
-            doc["stagiaire"] = {
-                "id": d["id"],
-                "nom": d.get("nom"),
-                "prenom": d.get("prenom"),
-                "financeur_type": d.get("financeur_type"),
-            }
+            doc["stagiaire"] = {"id": d["id"], "nom": d.get("nom"), "prenom": d.get("prenom"), "financeur_type": d.get("financeur_type")}
         else:
             doc["stagiaire"] = None
     return docs
@@ -72,14 +68,7 @@ async def list_library(
     q: Optional[str] = None,
     user: dict = Depends(deps.get_current_user),
 ):
-    """Liste les documents avec recherche multi-champs :
-    - nom de fichier
-    - nom / prénom du stagiaire rattaché
-    - n° de dossier CPF du stagiaire (financeur_nom)
-    - n° de facture (via collection factures_cpf liée par dossier_cpf)
-    """
     import re as _re
-
     base_query: dict = {}
     if scope == "unattached":
         base_query["$or"] = [{"dossier_id": None}, {"dossier_id": {"$exists": False}}]
@@ -87,12 +76,9 @@ async def list_library(
         base_query["dossier_id"] = {"$nin": [None, ""]}
     if type and type in DOC_TYPE_LABEL:
         base_query["type"] = type
-
     docs = await deps.db.dossier_documents.find(base_query, {"_id": 0}).sort("uploaded_at", -1).to_list(5000)
-
     if q:
         term = q.strip().lower()
-        # Récupère les dossiers stagiaires qui matchent le terme (nom, prénom, financeur_nom)
         dossier_match_ids = set()
         async for d in deps.db.dossiers.find(
             {"$or": [
@@ -103,9 +89,6 @@ async def list_library(
             {"_id": 0, "id": 1},
         ):
             dossier_match_ids.add(d["id"])
-
-        # Récupère les n° de dossier CPF depuis les factures_cpf qui matchent le numero_facture
-        # Liaison facture → apprenant.dossier_cpf → dossier (financeur_nom)
         cpf_dossier_numbers = set()
         async for f in deps.db.factures_cpf.find(
             {"$or": [
@@ -116,25 +99,19 @@ async def list_library(
         ):
             if f.get("numero_dossier"):
                 cpf_dossier_numbers.add(f["numero_dossier"])
-
-        # Mappe les n° dossier CPF vers les dossiers stagiaires (via financeur_nom)
         if cpf_dossier_numbers:
             async for d in deps.db.dossiers.find(
                 {"financeur_nom": {"$in": list(cpf_dossier_numbers)}},
                 {"_id": 0, "id": 1},
             ):
                 dossier_match_ids.add(d["id"])
-
         filtered = []
         for doc in docs:
             fname = (doc.get("original_filename") or "").lower()
             did = doc.get("dossier_id")
-            if term in fname:
-                filtered.append(doc)
-            elif did and did in dossier_match_ids:
+            if term in fname or (did and did in dossier_match_ids):
                 filtered.append(doc)
         docs = filtered
-
     return await _enrich_with_stagiaire(docs)
 
 
@@ -142,20 +119,13 @@ async def list_library(
 async def library_stats(user: dict = Depends(deps.get_current_user)):
     total = await deps.db.dossier_documents.count_documents({})
     attached = await deps.db.dossier_documents.count_documents({"dossier_id": {"$nin": [None, ""]}})
-    unattached = total - attached
     by_type = {}
     for t in DOC_TYPE_LABEL.keys():
         by_type[t] = await deps.db.dossier_documents.count_documents({"type": t})
     total_size = 0
     async for d in deps.db.dossier_documents.find({}, {"_id": 0, "size": 1}):
         total_size += d.get("size") or 0
-    return {
-        "total": total,
-        "attached": attached,
-        "unattached": unattached,
-        "by_type": by_type,
-        "total_size_bytes": total_size,
-    }
+    return {"total": total, "attached": attached, "unattached": total - attached, "by_type": by_type, "total_size_bytes": total_size}
 
 
 @router.post("/library/upload")
@@ -165,31 +135,31 @@ async def upload_library(
     dossier_id: Optional[str] = Form(None),
     user: dict = Depends(deps.get_current_user),
 ):
-    """Upload un document dans la bibliothèque. dossier_id facultatif pour rattacher direct."""
-    # Validation taille (max 25 Mo)
     content = await file.read()
+    if not content:
+        raise HTTPException(400, "Fichier vide")
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(400, "Fichier trop volumineux (max 25 Mo)")
-
     if dossier_id:
-        existing = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0, "id": 1})
-        if not existing:
+        if not await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0, "id": 1}):
             raise HTTPException(400, "Dossier stagiaire introuvable")
-
     doc_id = deps.new_id()
-    ext = Path(file.filename or "").suffix or ""
-    stored_name = f"{doc_id}{ext}"
-    file_path = UPLOAD_DIR / stored_name
-    file_path.write_bytes(content)
-
+    ext = Path(file.filename or "").suffix.lstrip(".") or "bin"
+    path = f"{APP_PREFIX}/library/{doc_id}.{ext}"
+    try:
+        result = await put_object(path, content, file.content_type or "application/octet-stream")
+    except Exception:
+        logger.exception("Échec d'upload vers le stockage objet")
+        raise HTTPException(502, "Stockage indisponible, réessayez dans un instant")
     document = {
         "id": doc_id,
         "dossier_id": dossier_id,
         "type": type,
-        "filename": stored_name,
-        "original_filename": file.filename or stored_name,
+        "filename": path.split("/")[-1],  # back-compat affichage
+        "original_filename": file.filename or path.split("/")[-1],
         "content_type": file.content_type or "application/octet-stream",
-        "size": len(content),
+        "size": result.get("size", len(content)),
+        "storage_path": result.get("path", path),
         "uploaded_at": deps.now_utc().isoformat(),
     }
     await deps.db.dossier_documents.insert_one(dict(document))
@@ -199,21 +169,12 @@ async def upload_library(
 
 
 @router.patch("/library/{document_id}/attach")
-async def attach_document(
-    document_id: str,
-    payload: AttachPayload,
-    user: dict = Depends(deps.get_current_user),
-):
-    """Rattache un document à un dossier stagiaire."""
-    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1})
-    if not doc:
+async def attach_document(document_id: str, payload: AttachPayload, user: dict = Depends(deps.get_current_user)):
+    if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):
         raise HTTPException(404, "Document introuvable")
-    dossier = await deps.db.dossiers.find_one({"id": payload.dossier_id}, {"_id": 0, "id": 1})
-    if not dossier:
+    if not await deps.db.dossiers.find_one({"id": payload.dossier_id}, {"_id": 0, "id": 1}):
         raise HTTPException(400, "Dossier stagiaire introuvable")
-    await deps.db.dossier_documents.update_one(
-        {"id": document_id}, {"$set": {"dossier_id": payload.dossier_id}}
-    )
+    await deps.db.dossier_documents.update_one({"id": document_id}, {"$set": {"dossier_id": payload.dossier_id}})
     updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     enriched = await _enrich_with_stagiaire([updated])
     return enriched[0]
@@ -221,25 +182,16 @@ async def attach_document(
 
 @router.patch("/library/{document_id}/detach")
 async def detach_document(document_id: str, user: dict = Depends(deps.get_current_user)):
-    """Détache un document de son dossier (devient libre)."""
-    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1})
-    if not doc:
+    if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):
         raise HTTPException(404, "Document introuvable")
-    await deps.db.dossier_documents.update_one(
-        {"id": document_id}, {"$set": {"dossier_id": None}}
-    )
+    await deps.db.dossier_documents.update_one({"id": document_id}, {"$set": {"dossier_id": None}})
     updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     enriched = await _enrich_with_stagiaire([updated])
     return enriched[0]
 
 
 @router.patch("/library/{document_id}")
-async def update_document(
-    document_id: str,
-    payload: dict = Body(...),
-    user: dict = Depends(deps.get_current_user),
-):
-    """Met à jour le type d'un document."""
+async def update_document(document_id: str, payload: dict = Body(...), user: dict = Depends(deps.get_current_user)):
     updates = {}
     if "type" in payload and payload["type"] in DOC_TYPE_LABEL:
         updates["type"] = payload["type"]
@@ -253,36 +205,22 @@ async def update_document(
     return enriched[0]
 
 
-@router.delete("/library/{document_id}")
-async def delete_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
-    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Document introuvable")
-    fpath = UPLOAD_DIR / (doc.get("filename") or "")
-    if fpath.exists():
-        try:
-            fpath.unlink()
-        except Exception:
-            pass
-    await deps.db.dossier_documents.delete_one({"id": document_id})
-    return {"deleted": 1}
-
-
 @router.delete("/library/bulk")
 async def delete_library_bulk(payload: dict = Body(...), user: dict = Depends(deps.get_current_user)):
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "Liste 'ids' requise et non vide")
-    docs = await deps.db.dossier_documents.find({"id": {"$in": ids}}, {"_id": 0}).to_list(5000)
-    for d in docs:
-        fpath = UPLOAD_DIR / (d.get("filename") or "")
-        if fpath.exists():
-            try:
-                fpath.unlink()
-            except Exception:
-                pass
     res = await deps.db.dossier_documents.delete_many({"id": {"$in": ids}})
     return {"deleted": res.deleted_count}
+
+
+@router.delete("/library/{document_id}")
+async def delete_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
+    doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document introuvable")
+    await deps.db.dossier_documents.delete_one({"id": document_id})
+    return {"deleted": 1}
 
 
 @router.get("/library/{document_id}/download")
@@ -290,60 +228,62 @@ async def download_library_doc(document_id: str, user: dict = Depends(deps.get_c
     doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Document introuvable")
-    fpath = UPLOAD_DIR / doc["filename"]
-    if not fpath.exists():
-        raise HTTPException(404, "Fichier manquant sur le disque")
-    return FileResponse(
-        path=str(fpath),
-        media_type=doc.get("content_type", "application/octet-stream"),
-        filename=doc.get("original_filename", doc["filename"]),
+    data, ctype = await _fetch_bytes(doc)
+    filename = doc.get("original_filename", doc.get("filename", "document"))
+    return Response(
+        content=data,
+        media_type=ctype,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
 @router.get("/library/{document_id}/preview")
 async def preview_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
-    """Renvoie le fichier en mode inline (pour aperçu navigateur, PDF/image)."""
     doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Document introuvable")
-    fpath = UPLOAD_DIR / doc["filename"]
-    if not fpath.exists():
-        raise HTTPException(404, "Fichier manquant sur le disque")
-    return FileResponse(
-        path=str(fpath),
-        media_type=doc.get("content_type", "application/octet-stream"),
-        headers={"Content-Disposition": f'inline; filename="{doc.get("original_filename", doc["filename"])}"'},
+    data, ctype = await _fetch_bytes(doc)
+    filename = doc.get("original_filename", doc.get("filename", "document"))
+    return Response(
+        content=data,
+        media_type=ctype,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
 @router.get("/library/{document_id}/preview-html")
 async def preview_library_html(document_id: str, user: dict = Depends(deps.get_current_user)):
-    """Aperçu HTML pour les fichiers Excel et CSV (rendu inline du contenu)."""
+    """Aperçu HTML pour les Excel/CSV (rendu inline du contenu)."""
     import csv as _csv
+    import io as _io
     from html import escape as _esc
 
     doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Document introuvable")
-    fpath = UPLOAD_DIR / doc["filename"]
-    if not fpath.exists():
-        raise HTTPException(404, "Fichier manquant sur le disque")
+    data, _ctype = await _fetch_bytes(doc)
 
-    ext = (doc.get("original_filename") or "").lower().split(".")[-1]
+    ext = (doc.get("original_filename") or doc.get("filename") or "").lower().split(".")[-1]
     sheets_html = []
-    MAX_ROWS = 500
-    MAX_COLS = 40
+    MAX_ROWS, MAX_COLS = 500, 40
 
     try:
         if ext in ("xlsx", "xlsm", "xls"):
             from openpyxl import load_workbook
-            wb = load_workbook(filename=str(fpath), data_only=True, read_only=True)
+            wb = load_workbook(filename=_io.BytesIO(data), data_only=True, read_only=True)
             for ws in wb.worksheets:
                 rows_html = []
-                rows_iter = ws.iter_rows(values_only=True)
                 first = True
                 count = 0
-                for row in rows_iter:
+                for row in ws.iter_rows(values_only=True):
                     if count >= MAX_ROWS:
                         rows_html.append(f'<tr><td colspan="{MAX_COLS}" class="trunc">… ({MAX_ROWS} lignes affichées sur plus)</td></tr>')
                         break
@@ -358,18 +298,13 @@ async def preview_library_html(document_id: str, user: dict = Depends(deps.get_c
                     rows_html.append("</tbody>")
                 else:
                     rows_html.append('<tbody><tr><td class="empty">Feuille vide</td></tr></tbody>')
-                sheets_html.append({
-                    "name": ws.title,
-                    "html": '<table class="xls-table">' + "".join(rows_html) + "</table>",
-                })
+                sheets_html.append({"name": ws.title, "html": '<table class="xls-table">' + "".join(rows_html) + "</table>"})
             wb.close()
         elif ext == "csv":
-            content = fpath.read_bytes()
             try:
-                text = content.decode("utf-8-sig")
+                text = data.decode("utf-8-sig")
             except UnicodeDecodeError:
-                text = content.decode("latin-1", errors="ignore")
-            # Détecte séparateur
+                text = data.decode("latin-1", errors="ignore")
             sample = text[:4096]
             delim = ";" if sample.count(";") > sample.count(",") else ","
             reader = _csv.reader(text.splitlines(), delimiter=delim)
@@ -392,8 +327,4 @@ async def preview_library_html(document_id: str, user: dict = Depends(deps.get_c
     except Exception as exc:
         raise HTTPException(500, f"Erreur de lecture du fichier : {exc}")
 
-    return {
-        "filename": doc.get("original_filename"),
-        "sheets": sheets_html,
-        "total_sheets": len(sheets_html),
-    }
+    return {"filename": doc.get("original_filename"), "sheets": sheets_html, "total_sheets": len(sheets_html)}
