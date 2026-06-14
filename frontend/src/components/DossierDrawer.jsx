@@ -122,9 +122,21 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
     }
   };
 
-  const downloadDoc = (d) => {
-    const url = `${api.defaults.baseURL}/dossier-documents/${d.id}/download`;
-    window.open(url, "_blank");
+  const downloadDoc = async (d) => {
+    try {
+      const response = await api.get(`/dossier-documents/${d.id}/download`, { responseType: "blob" });
+      const blob = new Blob([response.data], { type: d.content_type || "application/octet-stream" });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = d.original_filename || "document";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (e) {
+      toast.error("Impossible de télécharger le fichier");
+    }
   };
 
   const downloadDossierPdf = async () => {
@@ -385,7 +397,12 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                           className="text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-2 py-1 cursor-pointer inline-flex items-center gap-1">
                           {uploading === t.id ? <Spinner size={11} className="animate-spin" /> : <Upload size={11} />}
                           Importer
-                          <input type="file" hidden onChange={(e) => upload(t.id, e.target.files?.[0])} />
+                          <input
+                            type="file"
+                            hidden
+                            accept=".pdf,.xlsx,.xls,.xlsm,.csv,.doc,.docx,.png,.jpg,.jpeg,.heic,.webp"
+                            onChange={(e) => upload(t.id, e.target.files?.[0])}
+                          />
                         </label>
                       )}
                     </div>

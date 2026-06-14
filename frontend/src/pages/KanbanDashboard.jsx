@@ -179,7 +179,7 @@ export default function KanbanDashboard() {
             data-testid="open-edof-import"
             className="inline-flex items-center gap-2 h-9 px-3 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors"
           >
-            <FileArrowUp size={14} weight="bold" /> Importer EDOF
+            <FileArrowUp size={14} weight="bold" /> Télécharger fichier Excel
           </button>
           <button
             onClick={() => setShowExport(true)}
