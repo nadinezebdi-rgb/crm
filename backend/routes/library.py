@@ -423,6 +423,97 @@ async def auto_attach_factures(user: dict = Depends(deps.get_current_user)):
     return report
 
 
+@router.post("/library/auto-attach/export-xlsx")
+async def export_auto_attach_report(payload: dict = Body(...), user: dict = Depends(deps.get_current_user)):
+    """Convertit un rapport d'auto-rattachement en fichier Excel (3 feuilles).
+
+    Le client renvoie le rapport JSON retourné par /library/auto-attach. Le serveur
+    génère un xlsx stylé (Rattachements / Anomalies / Ignorés) à transmettre à l'équipe admin.
+    """
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_align = Alignment(horizontal="left", vertical="center")
+
+    def _add_sheet(name: str, headers: list, rows: list, header_color: str):
+        ws = wb.create_sheet(name)
+        fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+        for col_idx, h in enumerate(headers, start=1):
+            c = ws.cell(row=1, column=col_idx, value=h)
+            c.font = header_font
+            c.fill = fill
+            c.alignment = header_align
+        for row_idx, row in enumerate(rows, start=2):
+            for col_idx, val in enumerate(row, start=1):
+                ws.cell(row=row_idx, column=col_idx, value=val if val is not None else "")
+        # Ajuste largeur colonnes (auto-ish)
+        for col_idx, h in enumerate(headers, start=1):
+            max_len = max([len(str(h))] + [len(str(r[col_idx - 1] or "")) for r in rows] + [10])
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 60)
+        ws.freeze_panes = "A2"
+
+    # Feuille 1 : Synthèse
+    ws_syn = wb.create_sheet("Synthèse")
+    ws_syn["A1"] = "Rapport d'auto-rattachement des factures"
+    ws_syn["A1"].font = Font(bold=True, size=14)
+    ws_syn["A3"] = "Documents analysés"
+    ws_syn["B3"] = payload.get("total_examined", 0)
+    ws_syn["A4"] = "Rattachements effectués"
+    ws_syn["B4"] = payload.get("attached", 0)
+    ws_syn["A5"] = "Anomalies (à traiter manuellement)"
+    ws_syn["B5"] = len(payload.get("anomalies", []))
+    ws_syn["A6"] = "Fichiers ignorés (format non reconnu)"
+    ws_syn["B6"] = len(payload.get("skipped", []))
+    for row in range(3, 7):
+        ws_syn.cell(row=row, column=1).font = Font(bold=True)
+    ws_syn.column_dimensions["A"].width = 40
+    ws_syn.column_dimensions["B"].width = 15
+
+    # Feuille 2 : Rattachements
+    _add_sheet(
+        "Rattachements",
+        ["Fichier", "Apprenant", "N° facture", "N° dossier CPF"],
+        [[s.get("filename"), s.get("apprenant"), s.get("numero_facture"), s.get("numero_dossier")] for s in payload.get("successes", [])],
+        "10B981",  # emerald
+    )
+
+    # Feuille 3 : Anomalies
+    _add_sheet(
+        "Anomalies",
+        ["Fichier", "Motif", "N° facture détecté", "N° dossier détecté"],
+        [[a.get("filename"), a.get("reason"), a.get("numero_facture"), a.get("numero_dossier")] for a in payload.get("anomalies", [])],
+        "DC2626",  # red
+    )
+
+    # Feuille 4 : Ignorés
+    _add_sheet(
+        "Ignorés",
+        ["Fichier", "Motif"],
+        [[s.get("filename"), s.get("reason")] for s in payload.get("skipped", [])],
+        "64748B",  # slate
+    )
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    filename = f"rapport_rattachement_factures_{deps.now_utc().strftime('%Y-%m-%d_%H%M')}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(content)),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.patch("/library/{document_id}/detach")
 async def detach_document(document_id: str, user: dict = Depends(deps.get_current_user)):
     if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):

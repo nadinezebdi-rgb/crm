@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { X, CheckCircle, Warning, FileText, MagnifyingGlass } from "@phosphor-icons/react";
+import api, { formatApiError } from "@/lib/api";
+import { toast } from "sonner";
+import { X, CheckCircle, Warning, FileText, MagnifyingGlass, FileXls } from "@phosphor-icons/react";
 
 function Section({ title, items, emptyText, tone, renderItem }) {
   const toneClasses = {
@@ -34,7 +36,38 @@ function Section({ title, items, emptyText, tone, renderItem }) {
 
 export default function AutoAttachReportDialog({ open, report, onClose }) {
   const [search, setSearch] = useState("");
+  const [exporting, setExporting] = useState(false);
   if (!open || !report) return null;
+
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`${api.defaults.baseURL}/library/auto-attach/export-xlsx`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(report),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const filename = m ? m[1] : "rapport_rattachement.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Rapport Excel téléchargé");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Export Excel impossible");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const filter = (arr, fn) => {
     const term = search.trim().toLowerCase();
@@ -151,7 +184,15 @@ export default function AutoAttachReportDialog({ open, report, onClose }) {
           />
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <button
+            onClick={exportXlsx}
+            disabled={exporting}
+            data-testid="auto-attach-report-export"
+            className="h-9 px-4 text-sm font-semibold text-emerald-700 border border-emerald-300 bg-white hover:bg-emerald-50 rounded-md inline-flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <FileXls size={14} weight="bold" /> {exporting ? "Export…" : "Exporter Excel"}
+          </button>
           <button
             onClick={onClose}
             data-testid="auto-attach-report-done"
