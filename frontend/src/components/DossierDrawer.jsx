@@ -26,8 +26,24 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const refreshDocs = async () => {
     try {
-      const { data } = await api.get(`/dossiers/${dossier.id}/documents`);
-      setDocs(data);
+      const [docsRes, facturesRes] = await Promise.all([
+        api.get(`/dossiers/${dossier.id}/documents`),
+        api.get(`/dossiers/${dossier.id}/factures-cpf`).catch(() => ({ data: [] })),
+      ]);
+      const baseDocs = docsRes.data || [];
+      // Injecte les factures CPF importées (métadonnées EDOF) comme pseudo-documents
+      // de type "facture" — sans fichier téléchargeable — pour valider le 4/4.
+      const cpfPseudoDocs = (facturesRes.data || []).map((f) => ({
+        id: `cpf-${f.id}`,
+        type: "facture",
+        original_filename:
+          (f.numero_facture ? `Facture ${f.numero_facture}` : `Facture CPF`) +
+          (f.montant ? ` · ${Number(f.montant).toFixed(2)} €` : ""),
+        size: 0,
+        is_cpf_import: true,
+        statut_reglement: f.statut_reglement,
+      }));
+      setDocs([...baseDocs, ...cpfPseudoDocs]);
     } catch {
       // ignore
     }
@@ -481,14 +497,22 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                             <span className="inline-flex items-center gap-2 truncate text-slate-700">
                               <FileText size={13} />
                               <span className="truncate">{d.original_filename}</span>
-                              <span className="text-slate-400">· {formatSize(d.size)}</span>
+                              {d.is_cpf_import ? (
+                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                                  Importée EDOF{d.statut_reglement ? ` · ${d.statut_reglement}` : ""}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">· {formatSize(d.size)}</span>
+                              )}
                             </span>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => downloadDoc(d)} data-testid={`download-doc-${d.id}`}
-                                className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
-                                <Download size={13} />
-                              </button>
-                              {!readonly && (
+                              {!d.is_cpf_import && (
+                                <button onClick={() => downloadDoc(d)} data-testid={`download-doc-${d.id}`}
+                                  className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
+                                  <Download size={13} />
+                                </button>
+                              )}
+                              {!readonly && !d.is_cpf_import && (
                                 <button onClick={() => removeDoc(d.id)} data-testid={`delete-doc-${d.id}`}
                                   className="h-6 w-6 inline-flex items-center justify-center text-red-500 hover:bg-red-100 rounded">
                                   <Trash size={13} />

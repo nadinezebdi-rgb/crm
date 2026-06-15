@@ -71,3 +71,10 @@ Dates auto-renseignées :
 - ✅ Frontend : datalist niveaux Anglais sur champs Formation (Onboarding + Drawer)
 - ✅ Tests : 21/21 backend pytest PASS + E2E frontend complet (xlsx download capturé, PDF généré, RESET validé)
 - 🧹 Nettoyage : suppression des stubs locaux /app/backend/emergentintegrations et /app/backend/litellm qui shadowed le vrai package
+
+
+## Itération 5 (15 juin 2026) — Facture CPF importée comptée dans le drawer
+- ✅ Bug fix : les factures CPF importées (EDOF) liées à un dossier via `financeur_nom = numero_dossier` apparaissent désormais comme pseudo-documents dans le drawer d'apprenant (slot "Facture")
+- ✅ `DossierDrawer.jsx` : `refreshDocs()` fait désormais 2 appels en parallèle (`/dossiers/{id}/documents` + `/dossiers/{id}/factures-cpf`) puis fusionne les factures CPF comme pseudo-docs de type "facture" (sans bouton download/delete, badge "Importée EDOF · Statut")
+- ✅ Le compteur 4/4 prend en compte la facture CPF importée, ce qui active le bouton "Envoyer vers Dossiers Clôturés" dès que les 4 docs sont présents
+- ✅ Vérifié par curl + screenshot (dossier DUPONT DOSS-2026-001) : 1/4 → 4/4 quand les 3 autres types sont uploadés, bouton archivage activé

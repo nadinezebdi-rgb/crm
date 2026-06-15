@@ -203,6 +203,21 @@ async def delete_dossier(dossier_id: str, user: dict = Depends(deps.get_current_
     return {"ok": True}
 
 
+@router.get("/dossiers/{dossier_id}/factures-cpf")
+async def get_linked_factures(dossier_id: str, user: dict = Depends(deps.get_current_user)):
+    """Renvoie les factures CPF liées à ce dossier (matching financeur_nom = numero_dossier)."""
+    d = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dossier introuvable")
+    num = d.get("financeur_nom")
+    if not num:
+        return []
+    factures = await deps.db.factures_cpf.find(
+        {"numero_dossier": num}, {"_id": 0}
+    ).sort("date_emission", -1).to_list(200)
+    return factures
+
+
 @router.get("/dossiers/{dossier_id}/documents")
 async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_user)):
     items = await deps.db.dossier_documents.find(
