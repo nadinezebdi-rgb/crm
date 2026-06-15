@@ -164,7 +164,7 @@ async def _enrich_with_stagiaire(docs: List[dict]) -> List[dict]:
 
 @router.get("/library")
 async def list_library(
-    scope: str = Query("all", regex="^(all|unattached|attached)$"),
+    scope: str = Query("all", pattern="^(all|unattached|attached)$"),
     type: Optional[str] = None,
     q: Optional[str] = None,
     user: dict = Depends(deps.get_current_user),
@@ -276,15 +276,19 @@ async def upload_library(
         "uploaded_at": deps.now_utc().isoformat(),
     }
     # Auto-rattachement à l'apprenant si c'est une facture (basé sur n° dans le nom de fichier)
+    # NB : on n'auto-rattache que les PDF/images, jamais les Excel/Word/CSV (mêmes règles que /library/auto-attach)
     if type == "facture" and not dossier_id:
-        match = await _match_apprenant_for_filename(file.filename)
-        if match.get("status") == "ok":
-            document["apprenant_id"] = match["apprenant_id"]
-            document["auto_attached"] = True
-            document["auto_attach_meta"] = {
-                "numero_facture": match.get("numero_facture"),
-                "numero_dossier": match.get("numero_dossier"),
-            }
+        skip_exts = {"xlsx", "xls", "xlsm", "csv", "doc", "docx"}
+        upload_ext = Path(file.filename or "").suffix.lower().lstrip(".")
+        if upload_ext not in skip_exts:
+            match = await _match_apprenant_for_filename(file.filename)
+            if match.get("status") == "ok":
+                document["apprenant_id"] = match["apprenant_id"]
+                document["auto_attached"] = True
+                document["auto_attach_meta"] = {
+                    "numero_facture": match.get("numero_facture"),
+                    "numero_dossier": match.get("numero_dossier"),
+                }
     await deps.db.dossier_documents.insert_one(dict(document))
     document.pop("_id", None)
     enriched = await _enrich_with_stagiaire([document])
@@ -327,7 +331,8 @@ async def detach_document_apprenant(document_id: str, user: dict = Depends(deps.
     if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):
         raise HTTPException(404, "Document introuvable")
     await deps.db.dossier_documents.update_one(
-        {"id": document_id}, {"$set": {"apprenant_id": None, "auto_attached": False}}
+        {"id": document_id},
+        {"$set": {"apprenant_id": None, "auto_attached": False}, "$unset": {"auto_attach_meta": ""}},
     )
     updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     enriched = await _enrich_with_stagiaire([updated])

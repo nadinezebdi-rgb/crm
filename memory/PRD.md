@@ -78,3 +78,29 @@ Dates auto-renseignées :
 - ✅ `DossierDrawer.jsx` : `refreshDocs()` fait désormais 2 appels en parallèle (`/dossiers/{id}/documents` + `/dossiers/{id}/factures-cpf`) puis fusionne les factures CPF comme pseudo-docs de type "facture" (sans bouton download/delete, badge "Importée EDOF · Statut")
 - ✅ Le compteur 4/4 prend en compte la facture CPF importée, ce qui active le bouton "Envoyer vers Dossiers Clôturés" dès que les 4 docs sont présents
 - ✅ Vérifié par curl + screenshot (dossier DUPONT DOSS-2026-001) : 1/4 → 4/4 quand les 3 autres types sont uploadés, bouton archivage activé
+
+
+## Itération 6 (15 juin 2026) — Auto-rattachement PDF facture → apprenant
+**Demande utilisateur** : 240 PDF de factures (ex. BA-1077.pdf) dans la bibliothèque centrale étaient non-rattachés. Logique métier : extraire le n° depuis le nom de fichier → chercher la facture CPF correspondante → lire son n° de dossier CPF → rattacher l'apprenant ayant ce dossier_cpf.
+
+**Backend** (`/app/backend/routes/library.py`, `/app/backend/routes/documents.py`) :
+- ✅ Helper `_normalize_invoice_number(filename)` : normalise `BA-1077`, `B-A1077`, `BA 1077`, `ba_1077` → clé canonique `BA1077`. Retourne `None` pour `Rapport.xlsx`, `document.pdf`, `Facture-BA-1077.pdf`. Regex stricte : 1-3 lettres + (sep + 1 lettre)? + sep? + 3-8 chiffres + FIN.
+- ✅ Helper `_match_apprenant_for_filename(filename)` : retourne `{status: ok|unparseable|invoice_not_found|no_apprenant, ...}`.
+- ✅ `POST /library/upload` : auto-attach automatique si type=facture + fichier PDF/image (xlsx/xls/csv/doc/docx exclus via extension-gate).
+- ✅ `POST /library/auto-attach` : traitement bulk renvoyant `{total_examined, attached, successes[], anomalies[], skipped[]}`.
+- ✅ `PATCH /library/{id}/attach-apprenant` + `/detach-apprenant` : gestion manuelle.
+- ✅ Schéma : nouveaux champs `apprenant_id`, `auto_attached`, `auto_attach_meta` sur `dossier_documents`.
+- ✅ `GET /apprenants/{id}/documents` merge désormais les library docs (`apprenant_id == id` → mappés en `categorie: 'facture'` + `source: 'library'`).
+- ✅ `GET /library` enrichit chaque doc avec `apprenant: {id, nom, prenom, dossier_cpf}`. Scope `unattached` = ni dossier_id ni apprenant_id.
+
+**Frontend** :
+- ✅ `pages/Documents.jsx` : bouton violet **"Rattacher tout"** (MagicWand) + dialog de rapport.
+- ✅ `components/AutoAttachReportDialog.jsx` : nouveau dialog 3 sections (✓ Rattachements / ⚠ Anomalies / ↷ Ignorés) + filtre.
+- ✅ `pages/Documents.jsx` : colonne "Stagiaire rattaché" affiche apprenant avec badge **AUTO** violet.
+- ✅ `pages/ApprenantDetail.jsx` : carte **Facture** affiche les PDF library avec badge **Auto** ; download via `/library/{id}/download` ; détachement via `/library/{id}/detach-apprenant`.
+
+**Tests** : 12/12 pytest PASS (`/app/backend/tests/test_library_auto_attach.py`) — couvre normalizer, upload auto-attach, bulk endpoint, merge, scope, detach. Bug spec-violation `xlsx auto-attaché à l'upload` détecté par testing agent + corrigé.
+
+## Itération 5 (15 juin 2026) — Recherche apprenants par n° dossier CPF + Factures dans drawer
+- ✅ `routes/crud.py` : ajout de `dossier_cpf` dans les champs cherchés par `GET /apprenants?q=…` (validé curl).
+- ✅ `DossierDrawer.jsx` : factures CPF importées comptent dans le compteur 4/4 (déjà en place avant ce fork).
