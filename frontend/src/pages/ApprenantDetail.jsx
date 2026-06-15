@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -35,11 +35,14 @@ const fmtSize = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` :
 
 export default function ApprenantDetail() {
   const { id } = useParams();
+  const location = useLocation();
   const [apprenant, setApprenant] = useState(null);
   const [docs, setDocs] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [uploadingCat, setUploadingCat] = useState(null);
+  const [highlightCat, setHighlightCat] = useState(null);
   const fileRefs = useRef({});
+  const catRefs = useRef({});
 
   const load = async () => {
     try {
@@ -57,6 +60,23 @@ export default function ApprenantDetail() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+
+  // Quand l'URL contient #facture (ou autre catégorie) on scrolle et on met en surbrillance
+  useEffect(() => {
+    if (!apprenant) return;
+    const hash = (location.hash || "").replace(/^#/, "");
+    if (!hash) return;
+    const validKey = CATEGORIES_DOCUMENTS.find((c) => c.key === hash);
+    if (!validKey) return;
+    const el = catRefs.current[hash];
+    if (!el) return;
+    const scrollTimer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightCat(hash);
+    }, 100);
+    const clearTimer = setTimeout(() => setHighlightCat(null), 2300);
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
+  }, [apprenant, location.hash]);
 
   const upload = async (cat, file) => {
     if (!file) return;
@@ -162,8 +182,14 @@ export default function ApprenantDetail() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {CATEGORIES_DOCUMENTS.map((cat) => {
           const files = docs.filter((d) => d.categorie === cat.key);
+          const isHighlighted = highlightCat === cat.key;
           return (
-            <Card key={cat.key} className="border-slate-200 p-4" data-testid={`doc-cat-${cat.key}`}>
+            <Card
+              key={cat.key}
+              ref={(el) => { catRefs.current[cat.key] = el; }}
+              className={`border-slate-200 p-4 transition-all duration-500 ${isHighlighted ? "ring-4 ring-brand-400 ring-offset-2 border-brand-300 shadow-lg" : ""}`}
+              data-testid={`doc-cat-${cat.key}`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <FileText size={16} className="text-brand-600" />

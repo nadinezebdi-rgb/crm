@@ -332,21 +332,45 @@ export default function Facturation() {
                       />
                     </td>
                     <td className="px-4 py-2.5 font-medium text-slate-900 whitespace-nowrap">{f.numero_facture || "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">{f.numero_dossier || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">
+                      {f.numero_dossier ? (
+                        f.apprenant ? (
+                          <Link
+                            to={`/apprenants/${f.apprenant.id}#facture`}
+                            data-testid={`facture-dossier-${f.id}`}
+                            className="hover:text-brand-700 hover:underline"
+                            title="Ouvrir la fiche apprenant — section Facture"
+                          >
+                            {f.numero_dossier}
+                          </Link>
+                        ) : (
+                          f.numero_dossier
+                        )
+                      ) : "—"}
+                    </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {f.stagiaire ? (
+                      {f.stagiaire && f.stagiaire.kind === "dossier" ? (
                         <Link
-                          to={f.stagiaire.kind === "dossier" && f.stagiaire.status === "regle" ? "/archives" : "/actions"}
+                          to={f.stagiaire.status === "regle" ? "/archives" : "/actions"}
                           data-testid={`facture-stagiaire-${f.id}`}
                           className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 hover:underline"
-                          title={f.stagiaire.kind === "dossier" ? "Ouvrir la fiche stagiaire" : "Ouvrir l'apprenant"}
+                          title="Ouvrir la fiche stagiaire (dossier Kanban)"
                         >
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                           {f.stagiaire.prenom} {f.stagiaire.nom}
                           <ArrowRight size={11} weight="bold" className="opacity-50" />
                         </Link>
                       ) : f.apprenant ? (
-                        <span className="text-slate-800">{f.apprenant.prenom} {f.apprenant.nom}</span>
+                        <Link
+                          to={`/apprenants/${f.apprenant.id}#facture`}
+                          data-testid={`facture-apprenant-${f.id}`}
+                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 hover:underline"
+                          title="Ouvrir la fiche apprenant — section Facture"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          {f.apprenant.prenom} {f.apprenant.nom}
+                          <ArrowRight size={11} weight="bold" className="opacity-50" />
+                        </Link>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs" title="Aucun stagiaire avec ce numéro de dossier CPF">
                           <Warning size={12} weight="fill" /> Non rattaché
