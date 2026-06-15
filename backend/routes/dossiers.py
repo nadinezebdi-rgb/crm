@@ -307,6 +307,104 @@ async def dossiers_stats(user: dict = Depends(deps.get_current_user)):
 
 
 # ============================================================================
+# Auto-statut depuis les factures CPF importées (EDOF)
+# ============================================================================
+
+def _is_facture_payee(statut: Optional[str]) -> bool:
+    """Renvoie True si le statut EDOF indique une facture réglée/versée."""
+    if not statut:
+        return False
+    s = statut.strip().lower()
+    # Accepte les variantes : "Réglée", "Réglé", "Versée", "Versé", "Payée", "Encaissée"
+    return s.startswith(("régl", "regl", "vers", "pay", "encaiss"))
+
+
+async def sync_dossier_statuses_from_factures() -> dict:
+    """Met à jour le statut des dossiers en fonction des factures CPF importées.
+
+    Règles (UNIQUEMENT en upgrade, jamais de downgrade) :
+      • Si au moins une facture liée a un statut "Réglée"/"Versée"  → status = `regle` (+ date_cloture)
+      • Sinon, si au moins une facture existe                          → status ≥ `facture`
+    Le matching dossier ↔ facture est fait via dossier.financeur_nom == facture.numero_dossier
+    """
+    promoted_facture = 0
+    promoted_regle = 0
+    untouched = 0
+    details: List[dict] = []
+
+    # 1) Indexe les factures par numero_dossier (regroupement par dossier)
+    by_dossier: dict = {}
+    async for f in deps.db.factures_cpf.find(
+        {"numero_dossier": {"$nin": [None, ""]}},
+        {"_id": 0, "numero_dossier": 1, "statut_reglement": 1, "numero_facture": 1},
+    ):
+        by_dossier.setdefault(f["numero_dossier"], []).append(f)
+
+    # 2) Parcourt tous les dossiers avec un n° CPF
+    async for d in deps.db.dossiers.find(
+        {"financeur_nom": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "status": 1, "financeur_nom": 1, "date_cloture": 1},
+    ):
+        factures = by_dossier.get(d["financeur_nom"], [])
+        if not factures:
+            untouched += 1
+            continue
+
+        current_idx = STATUS_ORDER.index(d["status"]) if d.get("status") in STATUS_ORDER else 0
+        has_paid = any(_is_facture_payee(f.get("statut_reglement")) for f in factures)
+
+        target_idx = current_idx
+        target_status = d.get("status")
+        if has_paid:
+            target_idx = STATUS_ORDER.index("regle")
+            target_status = "regle"
+        else:
+            facture_idx = STATUS_ORDER.index("facture")
+            if current_idx < facture_idx:
+                target_idx = facture_idx
+                target_status = "facture"
+
+        # On NE downgrade JAMAIS — uniquement promotion
+        if target_idx <= current_idx:
+            untouched += 1
+            continue
+
+        updates = {"status": target_status, "updated_at": deps.now_utc().isoformat()}
+        if target_status == "regle" and not d.get("date_cloture"):
+            updates["date_cloture"] = deps.now_utc().isoformat()
+        await deps.db.dossiers.update_one({"id": d["id"]}, {"$set": updates})
+
+        if target_status == "regle":
+            promoted_regle += 1
+        else:
+            promoted_facture += 1
+        details.append({
+            "dossier_id": d["id"],
+            "stagiaire": f"{d.get('prenom', '')} {d.get('nom', '')}".strip(),
+            "financeur_nom": d["financeur_nom"],
+            "from": d.get("status"),
+            "to": target_status,
+            "factures_count": len(factures),
+        })
+
+    return {
+        "promoted_to_regle": promoted_regle,
+        "promoted_to_facture": promoted_facture,
+        "untouched": untouched,
+        "details": details,
+    }
+
+
+@router.post("/dossiers-admin/sync-status-factures")
+async def sync_status_from_factures_endpoint(user: dict = Depends(deps.get_current_user)):
+    """Endpoint manuel : re-synchronise tous les statuts depuis les factures CPF.
+
+    Utile après un import EDOF correctif ou si on veut forcer la re-évaluation.
+    """
+    return await sync_dossier_statuses_from_factures()
+
+
+# ============================================================================
 # ADMIN — Vider tous les dossiers + Importer depuis EDOF/CSV/XLSX
 # ============================================================================
 

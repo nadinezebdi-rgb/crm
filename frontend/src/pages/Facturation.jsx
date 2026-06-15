@@ -134,13 +134,30 @@ export default function Facturation() {
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await api.post("/factures-cpf/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`Import terminé : ${data.importees} facture(s) importée(s), ${data.mises_a_jour} mise(s) à jour`);
+      const extraParts = [];
+      if (data.dossiers_passes_regle) extraParts.push(`${data.dossiers_passes_regle} dossier(s) → réglé`);
+      if (data.dossiers_passes_facture) extraParts.push(`${data.dossiers_passes_facture} dossier(s) → facturé`);
+      const extra = extraParts.length ? ` · ${extraParts.join(", ")}` : "";
+      toast.success(`Import terminé : ${data.importees} facture(s) importée(s), ${data.mises_a_jour} mise(s) à jour${extra}`);
       load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || "Import impossible");
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const syncStatuses = async () => {
+    if (!window.confirm("Re-synchroniser les statuts des dossiers en fonction des factures CPF importées ?\n\n• Facture « Réglée » → dossier passe à « Réglé »\n• Facture non payée → dossier passe à « Facturé »\n• Aucun downgrade : seuls les statuts amont sont mis à jour.")) return;
+    try {
+      const { data } = await api.post("/dossiers-admin/sync-status-factures");
+      const msg = `${data.promoted_to_regle} dossier(s) → réglé · ${data.promoted_to_facture} dossier(s) → facturé · ${data.untouched} inchangé(s)`;
+      if (data.promoted_to_regle + data.promoted_to_facture > 0) toast.success(msg);
+      else toast.info(msg);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Synchronisation impossible");
     }
   };
 
@@ -199,6 +216,15 @@ export default function Facturation() {
             title="Supprimer toutes les factures CPF"
           >
             <Trash size={16} className="mr-1.5" /> Tout supprimer
+          </Button>
+          <Button
+            onClick={syncStatuses}
+            data-testid="factures-sync-statuses-btn"
+            variant="outline"
+            className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            title="Re-synchroniser les statuts des dossiers depuis les factures CPF (Réglée → réglé, autres → facturé)"
+          >
+            <ArrowRight size={16} className="mr-1.5" /> Sync statuts
           </Button>
           <Button
             onClick={generateMonthlySessions}

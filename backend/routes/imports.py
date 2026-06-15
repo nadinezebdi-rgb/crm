@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query, 
 import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
 from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns, detect_niveau_anglais
+from routes.dossiers import sync_dossier_statuses_from_factures
 
 router = APIRouter()
 
@@ -162,6 +163,10 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
         else:
             await deps.db.factures_cpf.insert_one({"id": deps.new_id(), "created_at": deps.now_utc().isoformat(), **doc})
             stats["importees"] += 1
+    # Synchro auto des statuts dossiers
+    sync = await sync_dossier_statuses_from_factures()
+    stats["dossiers_passes_facture"] = sync.get("promoted_to_facture", 0)
+    stats["dossiers_passes_regle"] = sync.get("promoted_to_regle", 0)
     return stats
 
 

@@ -80,6 +80,30 @@ Dates auto-renseignées :
 - ✅ Vérifié par curl + screenshot (dossier DUPONT DOSS-2026-001) : 1/4 → 4/4 quand les 3 autres types sont uploadés, bouton archivage activé
 
 
+
+## Itération 7 (15 juin 2026) — Auto-statut dossier depuis factures CPF + Export Excel rapport + Navigation Facturation→Apprenant
+**Demande utilisateur** : 1) auto-passage du statut dossier en `regle` quand la facture EDOF est "Réglée" (ou `facture` sinon), 2) export Excel du rapport d'auto-rattachement, 3) cliquer sur un apprenant dans Facturation CPF doit ouvrir sa fiche scrollée sur la carte Facture.
+
+**Backend** (`/app/backend/routes/dossiers.py`, `/app/backend/routes/imports.py`, `/app/backend/routes/library.py`) :
+- ✅ Helper `_is_facture_payee(statut)` : reconnaît "Réglée", "Versée", "Payée", "Encaissée" (et variantes accent/casse).
+- ✅ `sync_dossier_statuses_from_factures()` : parcourt tous les dossiers avec `financeur_nom`, regroupe les factures, applique la règle d'upgrade (jamais downgrade) :
+   - ≥1 facture payée → status=`regle` + date_cloture
+   - ≥1 facture mais aucune payée → status≥`facture`
+   - 0 facture → inchangé
+- ✅ `POST /dossiers-admin/sync-status-factures` : endpoint manuel.
+- ✅ Intégration automatique dans `POST /factures-cpf/import` : à chaque import, retour enrichi `{importees, mises_a_jour, dossiers_passes_regle, dossiers_passes_facture}`.
+- ✅ `POST /library/auto-attach/export-xlsx` : génère un Excel 4 feuilles (Synthèse / Rattachements / Anomalies / Ignorés) à partir du rapport JSON.
+
+**Frontend** :
+- ✅ `pages/Facturation.jsx` : nouveau bouton violet **"Sync statuts"** (re-synchro manuelle). Toast d'import enrichi avec compteurs dossiers→facture / dossiers→réglé. Liens cliquables sur N° dossier CPF + Stagiaire (apprenant) → `/apprenants/{id}#facture`.
+- ✅ `pages/ApprenantDetail.jsx` : détecte le hash `#facture` → scroll automatique + anneau bleu brand-400 pendant 2.3s sur la carte concernée.
+- ✅ `components/AutoAttachReportDialog.jsx` : bouton vert **"Exporter Excel"** (téléchargement via fetch, headers Content-Length).
+
+**Validation** :
+- ✅ Tests curl : promotion `en_formation`→`facture` puis `facture`→`regle` confirmées. No-downgrade vérifié (sophie déjà `regle` reste `regle`). Idempotent : 2e run = 0 changement.
+- ✅ Excel export : 4 feuilles correctement remplies (Synthèse / Rattachements / Anomalies / Ignorés), headers Cloudflare-compatible.
+- ✅ Screenshots : "Sync statuts" visible, "Exporter Excel" visible dans dialog, navigation `DOSS-J-001` → fiche Jean Dupont avec carte Facture highlightée.
+
 ## Itération 6 (15 juin 2026) — Auto-rattachement PDF facture → apprenant
 **Demande utilisateur** : 240 PDF de factures (ex. BA-1077.pdf) dans la bibliothèque centrale étaient non-rattachés. Logique métier : extraire le n° depuis le nom de fichier → chercher la facture CPF correspondante → lire son n° de dossier CPF → rattacher l'apprenant ayant ce dossier_cpf.
 
