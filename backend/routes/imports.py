@@ -174,12 +174,43 @@ async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends
             {"numero_facture": {"$regex": re.escape(q), "$options": "i"}},
         ]}
     factures = await deps.db.factures_cpf.find(query, {"_id": 0}).sort("date_emission", -1).to_list(2000)
+
+    # Liaison 1 : apprenants (ancien schéma — via apprenants.dossier_cpf)
     apprenants_map = {}
     async for a in deps.db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}):
         apprenants_map[a["dossier_cpf"]] = a
+
+    # Liaison 2 : dossiers stagiaires (nouveau schéma — via dossiers.financeur_nom)
+    dossiers_map = {}
+    async for d in deps.db.dossiers.find(
+        {"financeur_nom": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_nom": 1, "status": 1},
+    ):
+        dossiers_map[d["financeur_nom"]] = d
+
     for f in factures:
-        linked = apprenants_map.get(f.get("numero_dossier"))
-        f["apprenant"] = {"id": linked["id"], "nom": linked["nom"], "prenom": linked["prenom"]} if linked else None
+        num = f.get("numero_dossier")
+        apprenant = apprenants_map.get(num)
+        dossier = dossiers_map.get(num)
+        if dossier:
+            f["stagiaire"] = {
+                "id": dossier["id"],
+                "nom": dossier["nom"],
+                "prenom": dossier["prenom"],
+                "status": dossier.get("status"),
+                "kind": "dossier",
+            }
+        elif apprenant:
+            f["stagiaire"] = {
+                "id": apprenant["id"],
+                "nom": apprenant["nom"],
+                "prenom": apprenant["prenom"],
+                "kind": "apprenant",
+            }
+        else:
+            f["stagiaire"] = None
+        # Back-compat champ existant côté frontend
+        f["apprenant"] = {"id": apprenant["id"], "nom": apprenant["nom"], "prenom": apprenant["prenom"]} if apprenant else None
     return factures
 
 

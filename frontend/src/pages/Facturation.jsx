@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus, Trash, X } from "@phosphor-icons/react";
+import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus, Trash, X, ArrowRight, Warning } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import Pagination from "@/components/Pagination";
 
@@ -333,10 +334,23 @@ export default function Facturation() {
                     <td className="px-4 py-2.5 font-medium text-slate-900 whitespace-nowrap">{f.numero_facture || "—"}</td>
                     <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">{f.numero_dossier || "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {f.apprenant ? (
+                      {f.stagiaire ? (
+                        <Link
+                          to={f.stagiaire.kind === "dossier" && f.stagiaire.status === "regle" ? "/archives" : "/actions"}
+                          data-testid={`facture-stagiaire-${f.id}`}
+                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 hover:underline"
+                          title={f.stagiaire.kind === "dossier" ? "Ouvrir la fiche stagiaire" : "Ouvrir l'apprenant"}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          {f.stagiaire.prenom} {f.stagiaire.nom}
+                          <ArrowRight size={11} weight="bold" className="opacity-50" />
+                        </Link>
+                      ) : f.apprenant ? (
                         <span className="text-slate-800">{f.apprenant.prenom} {f.apprenant.nom}</span>
                       ) : (
-                        <span className="text-slate-400 text-xs italic">Non relié — importez l'export Dossiers</span>
+                        <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs" title="Aucun stagiaire avec ce numéro de dossier CPF">
+                          <Warning size={12} weight="fill" /> Non rattaché
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-900 whitespace-nowrap">{fmtEur(f.montant)}</td>
