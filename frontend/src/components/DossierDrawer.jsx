@@ -3,7 +3,7 @@ import api, { formatApiError } from "@/lib/api";
 import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, NIVEAUX_ANGLAIS, formatDate, formatSize } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
 import { toast } from "sonner";
-import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle } from "@phosphor-icons/react";
+import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle } from "@phosphor-icons/react";
 
 function Info({ label, value, colSpan }) {
   return (
@@ -124,8 +124,9 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDoc = async (d) => {
     try {
-      const response = await api.get(`/dossier-documents/${d.id}/download`, { responseType: "blob" });
-      const blob = new Blob([response.data], { type: d.content_type || "application/octet-stream" });
+      const res = await fetch(`${api.defaults.baseURL}/dossier-documents/${d.id}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
@@ -141,11 +142,12 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDossierPdf = async () => {
     try {
-      const response = await api.get(`/dossiers/${dossier.id}/pdf`, { responseType: "blob" });
-      const cd = response.headers["content-disposition"] || "";
+      const res = await fetch(`${api.defaults.baseURL}/dossiers/${dossier.id}/pdf`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
       const match = cd.match(/filename="?([^"]+)"?/);
       const filename = match ? match[1] : `dossier_${dossier.nom}_${dossier.prenom}.pdf`;
-      const blob = new Blob([response.data], { type: "application/pdf" });
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
@@ -384,14 +386,79 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
           </section>
 
           <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-3">Documents</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Documents</h3>
+              {(() => {
+                const filledCount = DOC_TYPES.filter((t) => docs.some((d) => d.type === t.id)).length;
+                const allFilled = filledCount === DOC_TYPES.length;
+                return (
+                  <span data-testid="docs-progress" className={`text-[11px] font-semibold px-2 py-0.5 rounded border inline-flex items-center gap-1 ${
+                    allFilled ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
+                  }`}>
+                    {allFilled && <CheckCircle size={11} weight="fill" />}
+                    {filledCount}/{DOC_TYPES.length} documents
+                  </span>
+                );
+              })()}
+            </div>
+
+            {(() => {
+              const filledCount = DOC_TYPES.filter((t) => docs.some((d) => d.type === t.id)).length;
+              const allFilled = filledCount === DOC_TYPES.length;
+              if (readonly || dossier.status === "regle") return null;
+              return (
+                <div
+                  data-testid="send-to-archives-card"
+                  className={`mb-4 rounded-lg p-4 border ${
+                    allFilled
+                      ? "bg-gradient-to-br from-emerald-50 to-white border-emerald-300"
+                      : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`h-10 w-10 rounded-md flex items-center justify-center flex-shrink-0 ${
+                      allFilled ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-400"
+                    }`}>
+                      <Archive size={18} weight={allFilled ? "fill" : "duotone"} />
+                    </div>
+                    <div className="flex-1">
+                      <div className={`text-sm font-bold ${allFilled ? "text-emerald-900" : "text-slate-700"} font-display`}>
+                        {allFilled ? "Tous les documents sont présents" : `${DOC_TYPES.length - filledCount} document(s) manquant(s)`}
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        {allFilled
+                          ? "Vous pouvez maintenant clôturer ce dossier — il sera archivé dans « Dossiers Clôturés »."
+                          : "Importez tous les documents (devis signé, attestation, facture, justificatif) pour pouvoir clôturer."}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => updateStatus("regle")}
+                      disabled={!allFilled}
+                      data-testid="send-to-archives-btn"
+                      className={`h-9 px-4 text-sm font-semibold rounded-md inline-flex items-center gap-2 transition-all flex-shrink-0 ${
+                        allFilled
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md hover:shadow-lg"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <Archive size={14} weight="bold" />
+                      Envoyer vers Dossiers Clôturés
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="space-y-3">
               {DOC_TYPES.map((t) => {
                 const ofType = docs.filter((d) => d.type === t.id);
                 return (
                   <div key={t.id} className="border border-slate-200 rounded-md p-3 bg-white">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-slate-900">{t.label}</div>
+                      <div className="text-sm font-medium text-slate-900 inline-flex items-center gap-2">
+                        {ofType.length > 0 && <CheckCircle size={13} weight="fill" className="text-emerald-500" />}
+                        {t.label}
+                      </div>
                       {!readonly && (
                         <label data-testid={`upload-${t.id}`}
                           className="text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-2 py-1 cursor-pointer inline-flex items-center gap-1">

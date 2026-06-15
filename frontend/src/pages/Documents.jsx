@@ -209,8 +209,9 @@ export default function Documents() {
 
   const downloadDoc = async (d) => {
     try {
-      const res = await api.get(`/library/${d.id}/download`, { responseType: "blob" });
-      const blob = new Blob([res.data], { type: d.content_type || "application/octet-stream" });
+      const res = await fetch(`${api.defaults.baseURL}/library/${d.id}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

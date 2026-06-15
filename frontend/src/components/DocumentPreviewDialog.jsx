@@ -82,24 +82,37 @@ export default function DocumentPreviewDialog({ open, document, onClose, onAttac
       setActiveSheet(0);
       setAttachOpen(false);
       setAttachQ("");
+
+      // Helper : récupère un blob via fetch (évite l'intercepteur XHR de emergent-main.js
+      // qui throw "InvalidStateError" sur responseType=blob)
+      const fetchBlob = async (path) => {
+        const res = await fetch(`${api.defaults.baseURL}${path}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.blob();
+      };
+
       try {
         if (isSpreadsheet(document)) {
           // Aperçu HTML pour Excel/CSV
           const { data } = await api.get(`/library/${document.id}/preview-html`);
           if (!cancelled) {
             setSheets(data.sheets || []);
-            // On charge aussi le blob pour permettre le téléchargement direct depuis l'aperçu
-            const res = await api.get(`/library/${document.id}/preview`, { responseType: "blob" });
-            if (!cancelled) {
-              const blob = new Blob([res.data], { type: document.content_type || "application/octet-stream" });
-              createdUrl = URL.createObjectURL(blob);
-              setBlobUrl(createdUrl);
+            // Charge aussi le blob (téléchargement depuis l'aperçu)
+            try {
+              const blob = await fetchBlob(`/library/${document.id}/preview`);
+              if (!cancelled) {
+                createdUrl = URL.createObjectURL(blob);
+                setBlobUrl(createdUrl);
+              }
+            } catch {
+              /* le blob est facultatif pour les spreadsheets */
             }
           }
         } else {
-          const res = await api.get(`/library/${document.id}/preview`, { responseType: "blob" });
+          const blob = await fetchBlob(`/library/${document.id}/preview`);
           if (cancelled) return;
-          const blob = new Blob([res.data], { type: document.content_type || "application/octet-stream" });
           if (isText(document)) {
             const txt = await blob.text();
             if (!cancelled) setTextContent(txt.slice(0, 200000));
@@ -109,7 +122,7 @@ export default function DocumentPreviewDialog({ open, document, onClose, onAttac
           }
         }
       } catch (e) {
-        if (!cancelled) toast.error("Aperçu indisponible");
+        if (!cancelled) toast.error("Aperçu indisponible — redéployez si le bouton vient d'être ajouté");
       } finally {
         if (!cancelled) setLoading(false);
       }
