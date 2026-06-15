@@ -78,17 +78,26 @@ export default function ApprenantDetail() {
   };
 
   const download = (doc) => {
-    window.open(`${process.env.REACT_APP_BACKEND_URL}/api/documents-apprenants/${doc.id}/download`, "_blank");
+    const path = doc.source === "library"
+      ? `/api/library/${doc.id}/download`
+      : `/api/documents-apprenants/${doc.id}/download`;
+    window.open(`${process.env.REACT_APP_BACKEND_URL}${path}`, "_blank");
   };
 
   const removeDoc = async (doc) => {
     if (!window.confirm(`Supprimer « ${doc.nom_fichier} » ?`)) return;
     try {
-      await api.delete(`/documents-apprenants/${doc.id}`);
+      if (doc.source === "library") {
+        // Détache du document de la bibliothèque (ne supprime pas le fichier)
+        await api.patch(`/library/${doc.id}/detach-apprenant`);
+        toast.success("Document détaché de l'apprenant");
+      } else {
+        await api.delete(`/documents-apprenants/${doc.id}`);
+        toast.success("Document supprimé");
+      }
       setDocs(docs.filter((d) => d.id !== doc.id));
-      toast.success("Document supprimé");
     } catch {
-      toast.error("Suppression impossible");
+      toast.error("Action impossible");
     }
   };
 
@@ -185,6 +194,11 @@ export default function ApprenantDetail() {
                   {files.map((f) => (
                     <li key={f.id} className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-100 rounded-md px-2.5 py-1.5" data-testid={`doc-file-${f.id}`}>
                       <span className="flex-1 truncate text-slate-700 font-medium">{f.nom_fichier}</span>
+                      {f.source === "library" && (
+                        <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-[9px] h-4 px-1.5 shrink-0" title={f.auto_attached ? "Rattachée automatiquement depuis la bibliothèque" : "Issue de la bibliothèque centrale"}>
+                          {f.auto_attached ? "Auto" : "Lib"}
+                        </Badge>
+                      )}
                       <span className="text-slate-400 shrink-0">{fmtSize(f.taille)} · {fmtDate(f.uploaded_at)}</span>
                       <button onClick={() => download(f)} className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0" data-testid={`doc-download-${f.id}`}>
                         <DownloadSimple size={13} />

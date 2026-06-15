@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 5 — Validated backend for the new feature 'Auto-rattachement PDF facture → apprenant'. Wrote /app/backend/tests/test_library_auto_attach.py (12 tests, all PASS). Coverage: invoice-number normalizer (canonical variants BA-1077/B-A1077/BA1077/BA 1077/ba_1077 → BA1077; non-invoice files return None; ext < 3 digits None; extension stripping), POST /api/library/upload auto-attach on first upload (status=ok, auto_attached=true, auto_attach_meta with numero_facture+numero_dossier, enriched 'apprenant' field), variant filenames normalize at upload, unparseable filenames do NOT auto-attach, POST /api/library/auto-attach bulk report structure (total_examined, attached, successes[], anomalies[], skipped[]), xlsx files always in 'skipped' on bulk, orphan invoices (facture exists but no matching apprenant via dossier_cpf) in 'anomalies' with proper reason, unparseable filenames in 'skipped', GET /api/apprenants/{id}/documents correctly merges library docs with source='library' + categorie='facture', GET /api/library returns 'apprenant' field for library docs attached to apprenants, scope=unattached excludes both dossier_id AND apprenant_id attachments, PATCH /api/library/{id}/attach-apprenant and /detach-apprenant work as expected. Found 1 spec-violation bug confirmed by reproducer: POST /api/library/upload auto-attaches XLSX/XLS/CSV/DOC/DOCX files when filename matches (the bulk endpoint correctly skips them — only the upload path is broken).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/library/upload",
+        "issue": "SPEC VIOLATION — When type=facture is uploaded with extension xlsx/xls/csv/doc/docx but a filename that normalizes to an invoice number (e.g. 'BA-9999.xlsx'), the endpoint auto-attaches the apprenant. Spec explicitly says non-PDF/image files must NEVER be auto-attached. Reproduced live: uploaded 'XL-09459.xlsx' as type=facture → apprenant_id was set + auto_attached=true. Fix: in upload_library() around line 279 of routes/library.py, gate the auto-attach block with a check on extension (replicate the same blacklist used in /library/auto-attach: xlsx/xls/xlsm/csv/doc/docx). The bulk endpoint /library/auto-attach already does this correctly.",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "GET /api/library",
+        "issue": "Pydantic deprecation warning: `Query(..., regex=...)` should be `Query(..., pattern=...)`. routes/library.py:167. Non-blocking but visible in logs."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_library_auto_attach.py",
+    "/app/test_reports/pytest/library_auto_attach_results.xml"
+  ],
+  "action_items": [
+    "Fix POST /api/library/upload to skip auto-attach for xlsx/xls/xlsm/csv/doc/docx (mirror the extension blacklist already used in /api/library/auto-attach). Currently the bulk endpoint skips xlsx correctly but the upload endpoint does not, leading to silent inconsistency.",
+    "Replace `regex=` by `pattern=` in fastapi Query() at routes/library.py:167 (deprecation warning)."
+  ],
+  "critical_code_review_comments": [
+    "routes/library.py:_normalize_invoice_number — Path.stem strips the last '.ext', so 'BA.1077' is treated as stem 'BA' and returns None. This is acceptable per spec which only lists '-', '_', ' ' as separators. If '.' is desired as a separator, refactor to operate on the raw filename minus a known doc-extension list.",
+    "routes/library.py:upload_library — Auto-attach inside upload is good UX BUT lacks the extension gate. Bug detailed in backend_issues. Trivial 3-line fix.",
+    "routes/library.py:_match_apprenant_for_filename — Linear scan over factures_cpf (.find().__aiter__) with in-Python normalization is O(N). For >10k factures consider precomputing a 'numero_facture_canonical' field at write-time and using an indexed direct lookup. Non-blocking at CRM scale.",
+    "routes/documents.py:list_documents_apprenant — Merged listing is clean. Mapping type→categorie includes 'justificatif_paiement'→'facture' which makes sense; ensure the front renders both under the Facture card.",
+    "routes/library.py:auto_attach_factures — Returns a well-structured report (total_examined/attached/successes/anomalies/skipped). Good defensive ordering: extension skip BEFORE _match_apprenant_for_filename invocation, so xlsx never hits the matcher.",
+    "routes/library.py:detach_document_apprenant — Sets auto_attached=False but does NOT clear auto_attach_meta. Minor: stale meta survives detachment. Consider `$unset: {auto_attach_meta: ''}` for cleanliness.",
+    "routes/library.py:list_library scope=unattached — Correctly uses $and of (dossier_id null/missing) and (apprenant_id null/missing). Verified by test."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_library_auto_attach.py (NEW — 12 tests PASS)"
+  ],
+  "success_rate": {"backend": "100% (12/12) on iteration 5 scope. 1 spec-violation bug found in upload xlsx gating (reported, not blocking — bulk endpoint compensates).", "frontend": "Not tested per request"},
+  "test_credentials": "admin@blade-academy.fr / admin123",
+  "seed_data_creation": "Per-test class: 1 apprenant TESTAA<rand>_NOM with dossier_cpf CPF-TESTAA<rand>-001, plus 2 factures_cpf inserted directly via pymongo (one valid, one orphan). Library docs are uploaded with random names and renamed via Mongo to reach the desired bulk-state. All test data is cleaned in the session-scoped fixture teardown (factures_cpf via _test_tag, dossier_documents via filename pattern, apprenant via DELETE /api/apprenants/{id}). DB is left clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_library_auto_attach.py is the regression suite for this feature. It needs MONGO_URL/DB_NAME (already in /app/backend/.env) and the admin login (admin@blade-academy.fr / admin123). The test imports _normalize_invoice_number directly from routes.library — sys.path.insert is done in the module. The bulk test uses a 'upload-then-rename' pattern in Mongo to bypass the upload-time auto-attach: this lets us reach controlled un-attached states for the bulk endpoint to act on. If E1 fixes the xlsx-upload bug, the test still passes (the rename trick is independent of the upload behavior).",
+  "rca of the issue": "Upload endpoint auto-attach branch (routes/library.py lines ~279-287) is missing the extension blacklist that the bulk endpoint applies (lines ~373-379). Reproducer: POST /api/library/upload with type=facture and a file named 'BA-9999.xlsx' attaches the matched apprenant if BA-9999 exists in factures_cpf. Mitigation: 3-line guard before calling _match_apprenant_for_filename: if Path(file.filename or '').suffix.lower().lstrip('.') in {'xlsx','xls','xlsm','csv','doc','docx'}: skip auto-attach."
+}
