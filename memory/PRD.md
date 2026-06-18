@@ -81,6 +81,27 @@ Dates auto-renseignées :
 
 
 
+## Itération 8 (18 juin 2026) — Triple fix : 4-docs min pour archivage + PDF library visibles dans dossiers + EDOF source archivé
+**Demandes utilisateur** : 1) un dossier ne doit passer en clôturés que s'il a ≥4 documents, 2) les vrais PDF de factures (`facture BA-2036.pdf`, `NF-BA-38 facture NEO.pdf`) doivent apparaître dans les dossiers clôturés, 3) le fichier Excel EDOF importé doit rester consultable.
+
+**Fix 1 — Archivage requiert 4 documents** (`routes/dossiers.py`) :
+- ✅ Nouveau helper `_dossier_doc_types_count(dossier)` qui compte les types distincts (devis_signe, attestation, facture, justificatif_paiement) en incluant les factures CPF importées comme satisfaisant le slot "facture".
+- ✅ `sync_dossier_statuses_from_factures()` : si une facture "Réglée" existe MAIS <4 types de docs présents → bloqué à `facture`, jamais `regle`. Nouveau compteur retourné : `blocked_missing_docs`.
+- ✅ Test : DUPONT avec 0 doc + facture Réglée → reste à `facture` (pas archivé). Après upload 3 docs → 4/4 (3 uploaded + 1 CPF metadata) → passe à `regle`.
+
+**Fix 2 — PDF library visibles dans le drawer du dossier** (`routes/dossiers.py`, `routes/library.py`, `DossierDrawer.jsx`) :
+- ✅ `GET /dossiers/{id}/documents` merge désormais les library docs cross-linkés via `auto_attach_meta.numero_dossier == financeur_nom`.
+- ✅ Auto-attach (upload + bulk) sauvegarde TOUJOURS `auto_attach_meta` dès qu'une facture CPF correspondante est trouvée (même si pas d'apprenant matching), pour permettre le cross-link.
+- ✅ Normaliseur amélioré : reconnaît `facture BA-2036.pdf`, `NF-BA-38 facture NEO.pdf`, `Facture-BA-1077.pdf`. Strip des préfixes descriptifs "facture/invoice/note/scan" + accepte 3 segments alpha (NF-BA-38). Pattern digits 2-8.
+- ✅ DossierDrawer affiche les library docs avec badge violet "Bibliothèque" + bouton download fonctionnel via `/library/{id}/download`. Suppression = détachement seulement (PATCH `detach-apprenant`).
+
+**Fix 3 — Fichier Excel EDOF archivé dans la bibliothèque** (`routes/imports.py`) :
+- ✅ `POST /factures-cpf/import` archive maintenant le fichier source dans Object Storage + dossier_documents avec `is_edof_source: true` et `edof_import_stats: {importees, mises_a_jour, ignorees}`.
+- ✅ Badge **"Source EDOF"** indigo sur la page Documents pour identifier ces fichiers historiques.
+
+**Tests** : 14/14 pytest PASS. Test e2e curl + screenshot : DUPONT en archives avec 4/4 docs, section Facture affiche `facture BA-2036.pdf` (badge Bibliothèque, téléchargeable) + 2 lignes EDOF metadata.
+
+
 ## Itération 7 (15 juin 2026) — Auto-statut dossier depuis factures CPF + Export Excel rapport + Navigation Facturation→Apprenant
 **Demande utilisateur** : 1) auto-passage du statut dossier en `regle` quand la facture EDOF est "Réglée" (ou `facture` sinon), 2) export Excel du rapport d'auto-rattachement, 3) cliquer sur un apprenant dans Facturation CPF doit ouvrir sa fiche scrollée sur la carte Facture.
 

@@ -35,29 +35,53 @@ class AttachPayload(BaseModel):
 # Auto-rattachement PDF facture → apprenant
 # ---------------------------------------------------------------------------
 
-# Reconnaît BA-1077, B-A1077, BA1077, B_A1077, ba 1077.
-# Pattern strict : 1-3 lettres + (séparateur optionnel + 1 lettre optionnelle) + séparateur optionnel + 3-8 chiffres + FIN.
-_INVOICE_NUM_RE = re.compile(r"^\s*([A-Za-z]{1,3})[\s\-_/.]?([A-Za-z]?)[\s\-_/.]?(\d{3,8})\s*$")
+# Reconnaît :
+#   - BA-1077, B-A1077, BA1077, BA 1077, ba_1077  → BA1077
+#   - NF-BA-38, NF-BA38, NFBA38                  → NFBA38
+#   - "NF-BA-38 facture NEO" (extra texte après)  → NFBA38
+# Pattern : 1 à 3 segments alphanumériques séparés par - _ . / espace, finissant par 2-8 chiffres,
+# suivi soit de la fin de chaîne, soit d'un espace (ignore le texte descriptif après).
+_INVOICE_NUM_RE = re.compile(
+    r"^\s*([A-Za-z]{1,4})(?:[\s\-_/.]?([A-Za-z]{1,3}))?(?:[\s\-_/.]?([A-Za-z]{1,3}))?[\s\-_/.]?(\d{2,8})(?:\s.*)?\s*$"
+)
 
 
 def _normalize_invoice_number(value: Optional[str]) -> Optional[str]:
     """Normalise un n° de facture (ou nom de fichier) en clé canonique.
 
     Exemples :
-        "BA-1077.pdf"  → "BA1077"
-        "B-A1077.pdf"  → "BA1077"
-        "BA 1077"      → "BA1077"
-        "ba_1077"      → "BA1077"
-        "Rapport.xlsx" → None (trop de lettres avant les chiffres)
-        "Facture-BA-1077.pdf" → None (préfixe « Facture » non standard)
+        "BA-1077.pdf"            → "BA1077"
+        "B-A1077.pdf"            → "BA1077"
+        "ba_1077"                → "BA1077"
+        "NF-BA-38.pdf"           → "NFBA38"
+        "facture BA-2036.pdf"    → "BA2036"  (préfixe descriptif "facture" enlevé)
+        "Facture-BA-1077.pdf"    → "BA1077"
+        "NF-BA-38 facture NEO.pdf" → "NFBA38" (texte après les digits ignoré)
+        "Rapport.xlsx"           → None
+        "document.pdf"           → None
     """
     if not value:
         return None
-    stem = Path(value).stem.strip()  # retire l'extension si fichier
+    stem = Path(value).stem.strip()
+    # Enlève les préfixes descriptifs courants (FR + EN) — le vrai n° suit derrière
+    DESCRIPTIVE_PREFIXES = ("facture", "invoice", "note", "scan")
+    low = stem.lower()
+    for prefix in DESCRIPTIVE_PREFIXES:
+        for sep in (" ", "-", "_", ".", ""):
+            tag = prefix + sep
+            if low.startswith(tag) and len(stem) > len(tag):
+                stem = stem[len(tag):].lstrip(" -_.")
+                low = stem.lower()
+                break
+    # Rejette absolument les rapports / docs génériques
+    REJECT_STARTS = ("rapport", "report", "doc", "fichier")
+    if any(low.startswith(p) for p in REJECT_STARTS):
+        return None
     m = _INVOICE_NUM_RE.match(stem)
     if not m:
         return None
-    cleaned = (m.group(1) + m.group(2) + m.group(3)).upper()
+    parts = [g for g in (m.group(1), m.group(2), m.group(3), m.group(4)) if g]
+    cleaned = "".join(parts).upper()
     return cleaned
 
 
@@ -275,20 +299,23 @@ async def upload_library(
         "storage_path": result.get("path", path),
         "uploaded_at": deps.now_utc().isoformat(),
     }
-    # Auto-rattachement à l'apprenant si c'est une facture (basé sur n° dans le nom de fichier)
+    # Auto-rattachement si c'est une facture (basé sur n° dans le nom de fichier)
     # NB : on n'auto-rattache que les PDF/images, jamais les Excel/Word/CSV (mêmes règles que /library/auto-attach)
     if type == "facture" and not dossier_id:
         skip_exts = {"xlsx", "xls", "xlsm", "csv", "doc", "docx"}
         upload_ext = Path(file.filename or "").suffix.lower().lstrip(".")
         if upload_ext not in skip_exts:
             match = await _match_apprenant_for_filename(file.filename)
-            if match.get("status") == "ok":
-                document["apprenant_id"] = match["apprenant_id"]
-                document["auto_attached"] = True
+            # Dès qu'on a trouvé une facture CPF correspondante, on sauvegarde la méta
+            # pour permettre le cross-link via dossier.financeur_nom même si l'apprenant n'existe pas
+            if match.get("numero_facture"):
                 document["auto_attach_meta"] = {
                     "numero_facture": match.get("numero_facture"),
                     "numero_dossier": match.get("numero_dossier"),
                 }
+            if match.get("status") == "ok":
+                document["apprenant_id"] = match["apprenant_id"]
+                document["auto_attached"] = True
     await deps.db.dossier_documents.insert_one(dict(document))
     document.pop("_id", None)
     enriched = await _enrich_with_stagiaire([document])
@@ -385,13 +412,21 @@ async def auto_attach_factures(user: dict = Depends(deps.get_current_user)):
 
         match = await _match_apprenant_for_filename(original)
         status = match.get("status")
+        # On stocke toujours la méta dès qu'on a trouvé une facture CPF correspondante,
+        # pour permettre le cross-link via dossier.financeur_nom même si l'apprenant n'existe pas
+        meta_to_save = None
+        if match.get("numero_facture"):
+            meta_to_save = {
+                "numero_facture": match.get("numero_facture"),
+                "numero_dossier": match.get("numero_dossier"),
+            }
         if status == "ok":
             await deps.db.dossier_documents.update_one(
                 {"id": doc["id"]},
                 {"$set": {
                     "apprenant_id": match["apprenant_id"],
                     "auto_attached": True,
-                    "auto_attach_meta": {
+                    "auto_attach_meta": meta_to_save or {
                         "numero_facture": match.get("numero_facture"),
                         "numero_dossier": match.get("numero_dossier"),
                     },
@@ -412,6 +447,12 @@ async def auto_attach_factures(user: dict = Depends(deps.get_current_user)):
                 "reason": match.get("reason"),
             })
         else:  # invoice_not_found, no_apprenant
+            # Pour no_apprenant on enregistre quand même la méta pour permettre le cross-link dossier
+            if meta_to_save and status == "no_apprenant":
+                await deps.db.dossier_documents.update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"auto_attach_meta": meta_to_save}},
+                )
             report["anomalies"].append({
                 "id": doc.get("id"),
                 "filename": original,

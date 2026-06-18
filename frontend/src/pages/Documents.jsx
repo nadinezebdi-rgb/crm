@@ -497,6 +497,11 @@ export default function Documents() {
                         >
                           {d.original_filename}
                         </button>
+                        {d.is_edof_source && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 shrink-0" title={d.edof_import_stats ? `Import : ${d.edof_import_stats.importees} importée(s), ${d.edof_import_stats.mises_a_jour} mise(s) à jour` : "Fichier source d'un import EDOF"}>
+                            Source EDOF
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">

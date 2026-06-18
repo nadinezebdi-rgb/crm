@@ -139,12 +139,25 @@ class TestNormalizer:
     def test_non_invoice_filenames_return_none(self):
         assert _normalize_invoice_number("Rapport_Dossiers.xlsx") is None
         assert _normalize_invoice_number("document.pdf") is None
-        assert _normalize_invoice_number("Facture-BA-1077.pdf") is None  # préfixe non standard
         assert _normalize_invoice_number("") is None
         assert _normalize_invoice_number(None) is None
 
-    def test_too_few_digits(self):
-        assert _normalize_invoice_number("BA-12.pdf") is None  # 2 chiffres < 3 minimum
+    def test_descriptive_prefix_stripped(self):
+        # Le préfixe "facture" / "Facture" est dépouillé, le n° suit derrière
+        assert _normalize_invoice_number("facture BA-2036.pdf") == "BA2036"
+        assert _normalize_invoice_number("Facture-BA-1077.pdf") == "BA1077"
+        assert _normalize_invoice_number("Facture_BA-1077.pdf") == "BA1077"
+
+    def test_minimal_digits(self):
+        # Le pattern accepte désormais 2-8 chiffres (ex: NF-BA-38)
+        assert _normalize_invoice_number("BA-12.pdf") == "BA12"
+        assert _normalize_invoice_number("BA-1.pdf") is None  # 1 chiffre = trop court
+
+    def test_multipart_prefix(self):
+        # Format NF-BA-38 (3 segments alpha avant les chiffres)
+        assert _normalize_invoice_number("NF-BA-38.pdf") == "NFBA38"
+        assert _normalize_invoice_number("NF-BA-38 facture NEO.pdf") == "NFBA38"
+        assert _normalize_invoice_number("NFBA-38.pdf") == "NFBA38"
 
     def test_with_extension_stripped(self):
         assert _normalize_invoice_number("XY-12345.pdf") == "XY12345"

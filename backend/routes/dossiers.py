@@ -220,9 +220,34 @@ async def get_linked_factures(dossier_id: str, user: dict = Depends(deps.get_cur
 
 @router.get("/dossiers/{dossier_id}/documents")
 async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_user)):
+    """Renvoie tous les documents pertinents pour ce dossier :
+      1) Documents uploadés directement (dossier_documents avec dossier_id == dossier_id)
+      2) Documents de la bibliothèque centrale rattachés à l'apprenant correspondant
+         (cross-link via dossier.financeur_nom == apprenant.dossier_cpf == library.auto_attach_meta.numero_dossier)
+    Ainsi les vrais PDF de factures uploadés via la bibliothèque apparaissent dans le dossier clôturé.
+    """
     items = await deps.db.dossier_documents.find(
         {"dossier_id": dossier_id}, {"_id": 0}
     ).sort("uploaded_at", -1).to_list(500)
+    # Cross-link via numero_dossier (EDOF) si présent
+    dossier = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0, "financeur_nom": 1})
+    if dossier and dossier.get("financeur_nom"):
+        numero = dossier["financeur_nom"]
+        # Library docs auto-rattachées via le n° de dossier
+        seen_ids = {it["id"] for it in items}
+        async for libdoc in deps.db.dossier_documents.find(
+            {
+                "auto_attach_meta.numero_dossier": numero,
+                "dossier_id": {"$in": [None, dossier_id]},
+            },
+            {"_id": 0},
+        ):
+            if libdoc.get("id") not in seen_ids:
+                libdoc["source"] = "library"
+                items.append(libdoc)
+                seen_ids.add(libdoc["id"])
+    # Tri final par date d'upload décroissante
+    items.sort(key=lambda d: d.get("uploaded_at") or "", reverse=True)
     return items
 
 
@@ -319,20 +344,44 @@ def _is_facture_payee(statut: Optional[str]) -> bool:
     return s.startswith(("régl", "regl", "vers", "pay", "encaiss"))
 
 
+async def _dossier_doc_types_count(dossier: dict) -> int:
+    """Compte le nombre de TYPES de documents distincts présents pour un dossier (max 4).
+
+    Types reconnus : devis_signe, attestation, facture, justificatif_paiement.
+    Une facture CPF importée (factures_cpf liée via financeur_nom) compte comme "facture",
+    de la même manière que dans le DossierDrawer.
+    """
+    types_present = set()
+    async for d in deps.db.dossier_documents.find(
+        {"dossier_id": dossier["id"], "type": {"$in": ["devis_signe", "attestation", "facture", "justificatif_paiement"]}},
+        {"_id": 0, "type": 1},
+    ):
+        types_present.add(d["type"])
+    # Si une facture CPF est rattachée → le slot "facture" est validé
+    if dossier.get("financeur_nom") and "facture" not in types_present:
+        if await deps.db.factures_cpf.find_one({"numero_dossier": dossier["financeur_nom"]}, {"_id": 1}):
+            types_present.add("facture")
+    return len(types_present)
+
+
 async def sync_dossier_statuses_from_factures() -> dict:
     """Met à jour le statut des dossiers en fonction des factures CPF importées.
 
     Règles (UNIQUEMENT en upgrade, jamais de downgrade) :
-      • Si au moins une facture liée a un statut "Réglée"/"Versée"  → status = `regle` (+ date_cloture)
-      • Sinon, si au moins une facture existe                          → status ≥ `facture`
+      • Si ≥1 facture liée a un statut "Réglée"/"Versée" ET le dossier a ≥4 types de
+        documents complets → status = `regle` (+ date_cloture)
+      • Sinon, si ≥1 facture existe → status ≥ `facture`
+      • Si <4 documents, on ne dépasse JAMAIS `facture` (l'utilisateur doit compléter
+        les pièces avant l'archivage).
     Le matching dossier ↔ facture est fait via dossier.financeur_nom == facture.numero_dossier
     """
     promoted_facture = 0
     promoted_regle = 0
     untouched = 0
+    blocked_missing_docs = 0
     details: List[dict] = []
 
-    # 1) Indexe les factures par numero_dossier (regroupement par dossier)
+    # 1) Indexe les factures par numero_dossier
     by_dossier: dict = {}
     async for f in deps.db.factures_cpf.find(
         {"numero_dossier": {"$nin": [None, ""]}},
@@ -355,9 +404,19 @@ async def sync_dossier_statuses_from_factures() -> dict:
 
         target_idx = current_idx
         target_status = d.get("status")
+        # Une facture payée => on tente regle, mais SEULEMENT si 4 types de docs présents
         if has_paid:
-            target_idx = STATUS_ORDER.index("regle")
-            target_status = "regle"
+            doc_types_count = await _dossier_doc_types_count(d)
+            if doc_types_count >= 4:
+                target_idx = STATUS_ORDER.index("regle")
+                target_status = "regle"
+            else:
+                # Bloqué par les docs manquants : on monte au moins à "facture"
+                facture_idx = STATUS_ORDER.index("facture")
+                if current_idx < facture_idx:
+                    target_idx = facture_idx
+                    target_status = "facture"
+                blocked_missing_docs += 1
         else:
             facture_idx = STATUS_ORDER.index("facture")
             if current_idx < facture_idx:
@@ -391,6 +450,7 @@ async def sync_dossier_statuses_from_factures() -> dict:
         "promoted_to_regle": promoted_regle,
         "promoted_to_facture": promoted_facture,
         "untouched": untouched,
+        "blocked_missing_docs": blocked_missing_docs,
         "details": details,
     }
 

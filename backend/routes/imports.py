@@ -8,6 +8,7 @@ import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
 from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns, detect_niveau_anglais
 from routes.dossiers import sync_dossier_statuses_from_factures
+from storage import APP_PREFIX, put_object
 
 router = APIRouter()
 
@@ -167,6 +168,40 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
     sync = await sync_dossier_statuses_from_factures()
     stats["dossiers_passes_facture"] = sync.get("promoted_to_facture", 0)
     stats["dossiers_passes_regle"] = sync.get("promoted_to_regle", 0)
+
+    # Conserve le fichier source dans la bibliothèque centrale pour consultation ultérieure
+    try:
+        from pathlib import Path as _Path
+        import logging as _logging
+        ext = _Path(file.filename or "").suffix.lstrip(".").lower() or "xlsx"
+        doc_id = deps.new_id()
+        ts = deps.now_utc().strftime("%Y%m%d_%H%M%S")
+        safe_name = (file.filename or "import_edof").replace("/", "_")
+        path = f"{APP_PREFIX}/imports-edof/{ts}_{doc_id}.{ext}"
+        result = await put_object(path, content, file.content_type or "application/octet-stream")
+        await deps.db.dossier_documents.insert_one({
+            "id": doc_id,
+            "dossier_id": None,
+            "apprenant_id": None,
+            "type": "autre",
+            "filename": path.split("/")[-1],
+            "original_filename": f"EDOF_factures_{ts}_{safe_name}",
+            "content_type": file.content_type or "application/octet-stream",
+            "size": result.get("size", len(content)),
+            "storage_path": result.get("path", path),
+            "uploaded_at": deps.now_utc().isoformat(),
+            "is_edof_source": True,
+            "edof_import_stats": {
+                "importees": stats["importees"],
+                "mises_a_jour": stats["mises_a_jour"],
+                "ignorees": stats["ignorees"],
+            },
+        })
+        stats["source_file_saved"] = True
+        stats["source_file_id"] = doc_id
+    except Exception as exc:  # pragma: no cover
+        _logging.getLogger("crm.imports").warning("Impossible d'archiver le fichier EDOF: %s", exc)
+        stats["source_file_saved"] = False
     return stats
 
 

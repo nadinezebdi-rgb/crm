@@ -128,10 +128,17 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
     }
   };
 
-  const removeDoc = async (id) => {
+  const removeDoc = async (d) => {
     try {
-      await api.delete(`/dossier-documents/${id}`);
-      toast.success("Document supprimé");
+      if (d.source === "library") {
+        // Library doc cross-linké : on ne supprime pas le fichier, on retire juste la méta de cross-link
+        if (!window.confirm("Retirer ce document du dossier ? Le fichier reste dans la bibliothèque centrale.")) return;
+        await api.patch(`/library/${d.id}/detach-apprenant`).catch(() => {});
+        toast.success("Document retiré du dossier");
+      } else {
+        await api.delete(`/dossier-documents/${d.id}`);
+        toast.success("Document supprimé");
+      }
       refreshDocs();
     } catch {
       toast.error("Erreur");
@@ -140,7 +147,10 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDoc = async (d) => {
     try {
-      const res = await fetch(`${api.defaults.baseURL}/dossier-documents/${d.id}/download`, { credentials: "include" });
+      const path = d.source === "library"
+        ? `/library/${d.id}/download`
+        : `/dossier-documents/${d.id}/download`;
+      const res = await fetch(`${api.defaults.baseURL}${path}`, { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
@@ -501,6 +511,13 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
                                   Importée EDOF{d.statut_reglement ? ` · ${d.statut_reglement}` : ""}
                                 </span>
+                              ) : d.source === "library" ? (
+                                <>
+                                  <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">
+                                    Bibliothèque{d.auto_attached ? " · Auto" : ""}
+                                  </span>
+                                  <span className="text-slate-400">· {formatSize(d.size)}</span>
+                                </>
                               ) : (
                                 <span className="text-slate-400">· {formatSize(d.size)}</span>
                               )}
@@ -513,7 +530,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                                 </button>
                               )}
                               {!readonly && !d.is_cpf_import && (
-                                <button onClick={() => removeDoc(d.id)} data-testid={`delete-doc-${d.id}`}
+                                <button onClick={() => removeDoc(d)} data-testid={`delete-doc-${d.id}`}
                                   className="h-6 w-6 inline-flex items-center justify-center text-red-500 hover:bg-red-100 rounded">
                                   <Trash size={13} />
                                 </button>
