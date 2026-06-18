@@ -14,7 +14,9 @@ import {
   Phone,
   IdentificationCard,
   Kanban,
+  Eye,
 } from "@phosphor-icons/react";
+import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 
 export const CATEGORIES_DOCUMENTS = [
   { key: "certificat", label: "Certificat (ExAssess…)" },
@@ -41,6 +43,7 @@ export default function ApprenantDetail() {
   const [sessions, setSessions] = useState([]);
   const [uploadingCat, setUploadingCat] = useState(null);
   const [highlightCat, setHighlightCat] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const fileRefs = useRef({});
   const catRefs = useRef({});
 
@@ -226,10 +229,26 @@ export default function ApprenantDetail() {
                         </Badge>
                       )}
                       <span className="text-slate-400 shrink-0">{fmtSize(f.taille)} · {fmtDate(f.uploaded_at)}</span>
-                      <button onClick={() => download(f)} className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0" data-testid={`doc-download-${f.id}`}>
+                      <button
+                        onClick={() => setPreviewDoc({
+                          id: f.id,
+                          original_filename: f.nom_fichier,
+                          content_type: f.content_type,
+                          size: f.taille,
+                          uploaded_at: f.uploaded_at,
+                          type: f.categorie,
+                          source: f.source,
+                        })}
+                        title="Voir le fichier"
+                        className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"
+                        data-testid={`doc-preview-${f.id}`}
+                      >
+                        <Eye size={13} />
+                      </button>
+                      <button onClick={() => download(f)} title="Télécharger" className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0" data-testid={`doc-download-${f.id}`}>
                         <DownloadSimple size={13} />
                       </button>
-                      <button onClick={() => removeDoc(f)} className="h-6 w-6 rounded hover:bg-red-50 text-red-600 flex items-center justify-center shrink-0" data-testid={`doc-delete-${f.id}`}>
+                      <button onClick={() => removeDoc(f)} title="Supprimer / Détacher" className="h-6 w-6 rounded hover:bg-red-50 text-red-600 flex items-center justify-center shrink-0" data-testid={`doc-delete-${f.id}`}>
                         <Trash size={13} />
                       </button>
                     </li>
@@ -240,6 +259,7 @@ export default function ApprenantDetail() {
           );
         })}
       </div>
+      <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={load} />
     </div>
   );
 }

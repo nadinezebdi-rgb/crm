@@ -618,7 +618,19 @@ async def download_library_doc(document_id: str, user: dict = Depends(deps.get_c
 
 @router.get("/library/{document_id}/preview")
 async def preview_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
+    # 1) cherche dans dossier_documents (library + dossier docs)
     doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    # 2) fallback : cherche dans apprenant_documents (docs natifs des apprenants)
+    if not doc:
+        ap_doc = await deps.db.apprenant_documents.find_one({"id": document_id, "is_deleted": False}, {"_id": 0})
+        if ap_doc:
+            # Normalise les champs pour _fetch_bytes
+            doc = {
+                "storage_path": ap_doc.get("storage_path"),
+                "content_type": ap_doc.get("content_type"),
+                "original_filename": ap_doc.get("nom_fichier"),
+                "filename": ap_doc.get("nom_fichier"),
+            }
     if not doc:
         raise HTTPException(404, "Document introuvable")
     data, ctype = await _fetch_bytes(doc)

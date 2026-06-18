@@ -2,8 +2,9 @@ import React, { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, NIVEAUX_ANGLAIS, formatDate, formatSize } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
+import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 import { toast } from "sonner";
-import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle } from "@phosphor-icons/react";
+import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle, Eye } from "@phosphor-icons/react";
 
 function Info({ label, value, colSpan }) {
   return (
@@ -21,6 +22,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
   const [form, setForm] = useState(dossier);
   const [uploading, setUploading] = useState(null);
   const [extracting, setExtracting] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState(null);
 
   const readonly = mode === "readonly";
 
@@ -524,13 +526,22 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                             </span>
                             <div className="flex items-center gap-1">
                               {!d.is_cpf_import && (
+                                <button onClick={() => setPreviewDoc(d)} data-testid={`preview-doc-${d.id}`}
+                                  title="Voir le fichier"
+                                  className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                              {!d.is_cpf_import && (
                                 <button onClick={() => downloadDoc(d)} data-testid={`download-doc-${d.id}`}
+                                  title="Télécharger"
                                   className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
                                   <Download size={13} />
                                 </button>
                               )}
                               {!readonly && !d.is_cpf_import && (
                                 <button onClick={() => removeDoc(d)} data-testid={`delete-doc-${d.id}`}
+                                  title="Supprimer / Détacher"
                                   className="h-6 w-6 inline-flex items-center justify-center text-red-500 hover:bg-red-100 rounded">
                                   <Trash size={13} />
                                 </button>
@@ -549,6 +560,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
           </section>
         </div>
       </div>
+      <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={refreshDocs} />
     </div>
   );
 }
