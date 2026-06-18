@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query, 
 import deps
 from models import EdofCommitPayload, SessionPayload, MOIS_FR
 from import_edof import TARGET_FIELDS, auto_map, parse_import_file, parse_date_fr, parse_amount, map_facture_columns, detect_niveau_anglais
+from routes.dossiers import sync_dossier_statuses_from_factures
+from storage import APP_PREFIX, put_object
 
 router = APIRouter()
 
@@ -162,6 +164,44 @@ async def factures_cpf_import(file: UploadFile = File(...), user: dict = Depends
         else:
             await deps.db.factures_cpf.insert_one({"id": deps.new_id(), "created_at": deps.now_utc().isoformat(), **doc})
             stats["importees"] += 1
+    # Synchro auto des statuts dossiers
+    sync = await sync_dossier_statuses_from_factures()
+    stats["dossiers_passes_facture"] = sync.get("promoted_to_facture", 0)
+    stats["dossiers_passes_regle"] = sync.get("promoted_to_regle", 0)
+
+    # Conserve le fichier source dans la bibliothèque centrale pour consultation ultérieure
+    try:
+        from pathlib import Path as _Path
+        import logging as _logging
+        ext = _Path(file.filename or "").suffix.lstrip(".").lower() or "xlsx"
+        doc_id = deps.new_id()
+        ts = deps.now_utc().strftime("%Y%m%d_%H%M%S")
+        safe_name = (file.filename or "import_edof").replace("/", "_")
+        path = f"{APP_PREFIX}/imports-edof/{ts}_{doc_id}.{ext}"
+        result = await put_object(path, content, file.content_type or "application/octet-stream")
+        await deps.db.dossier_documents.insert_one({
+            "id": doc_id,
+            "dossier_id": None,
+            "apprenant_id": None,
+            "type": "autre",
+            "filename": path.split("/")[-1],
+            "original_filename": f"EDOF_factures_{ts}_{safe_name}",
+            "content_type": file.content_type or "application/octet-stream",
+            "size": result.get("size", len(content)),
+            "storage_path": result.get("path", path),
+            "uploaded_at": deps.now_utc().isoformat(),
+            "is_edof_source": True,
+            "edof_import_stats": {
+                "importees": stats["importees"],
+                "mises_a_jour": stats["mises_a_jour"],
+                "ignorees": stats["ignorees"],
+            },
+        })
+        stats["source_file_saved"] = True
+        stats["source_file_id"] = doc_id
+    except Exception as exc:  # pragma: no cover
+        _logging.getLogger("crm.imports").warning("Impossible d'archiver le fichier EDOF: %s", exc)
+        stats["source_file_saved"] = False
     return stats
 
 
@@ -174,12 +214,43 @@ async def list_factures_cpf(q: Optional[str] = Query(None), user: dict = Depends
             {"numero_facture": {"$regex": re.escape(q), "$options": "i"}},
         ]}
     factures = await deps.db.factures_cpf.find(query, {"_id": 0}).sort("date_emission", -1).to_list(2000)
+
+    # Liaison 1 : apprenants (ancien schéma — via apprenants.dossier_cpf)
     apprenants_map = {}
     async for a in deps.db.apprenants.find({"dossier_cpf": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}):
         apprenants_map[a["dossier_cpf"]] = a
+
+    # Liaison 2 : dossiers stagiaires (nouveau schéma — via dossiers.financeur_nom)
+    dossiers_map = {}
+    async for d in deps.db.dossiers.find(
+        {"financeur_nom": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_nom": 1, "status": 1},
+    ):
+        dossiers_map[d["financeur_nom"]] = d
+
     for f in factures:
-        linked = apprenants_map.get(f.get("numero_dossier"))
-        f["apprenant"] = {"id": linked["id"], "nom": linked["nom"], "prenom": linked["prenom"]} if linked else None
+        num = f.get("numero_dossier")
+        apprenant = apprenants_map.get(num)
+        dossier = dossiers_map.get(num)
+        if dossier:
+            f["stagiaire"] = {
+                "id": dossier["id"],
+                "nom": dossier["nom"],
+                "prenom": dossier["prenom"],
+                "status": dossier.get("status"),
+                "kind": "dossier",
+            }
+        elif apprenant:
+            f["stagiaire"] = {
+                "id": apprenant["id"],
+                "nom": apprenant["nom"],
+                "prenom": apprenant["prenom"],
+                "kind": "apprenant",
+            }
+        else:
+            f["stagiaire"] = None
+        # Back-compat champ existant côté frontend
+        f["apprenant"] = {"id": apprenant["id"], "nom": apprenant["nom"], "prenom": apprenant["prenom"]} if apprenant else None
     return factures
 
 

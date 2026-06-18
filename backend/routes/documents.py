@@ -23,9 +23,38 @@ router = APIRouter()
 # ---------------- Documents apprenants ----------------
 @router.get("/apprenants/{apprenant_id}/documents")
 async def list_documents_apprenant(apprenant_id: str, user: dict = Depends(deps.get_current_user)):
-    return await deps.db.apprenant_documents.find(
+    # 1) Documents propres à l'apprenant (collection apprenant_documents)
+    own = await deps.db.apprenant_documents.find(
         {"apprenant_id": apprenant_id, "is_deleted": False}, {"_id": 0}
     ).sort("uploaded_at", -1).to_list(500)
+    # 2) Documents de la bibliothèque rattachés à cet apprenant (factures auto-rattachées, etc.)
+    library = await deps.db.dossier_documents.find(
+        {"apprenant_id": apprenant_id}, {"_id": 0}
+    ).sort("uploaded_at", -1).to_list(500)
+    # Mappage : library.type → apprenant.categorie
+    type_to_cat = {
+        "facture": "facture",
+        "devis_signe": "contrat",
+        "attestation": "attestation_assiduite",
+        "justificatif_paiement": "facture",
+        "autre": "autre",
+    }
+    for lib_doc in library:
+        own.append({
+            "id": lib_doc.get("id"),
+            "apprenant_id": apprenant_id,
+            "categorie": type_to_cat.get(lib_doc.get("type"), "autre"),
+            "nom_fichier": lib_doc.get("original_filename") or lib_doc.get("filename") or "document",
+            "content_type": lib_doc.get("content_type") or "application/octet-stream",
+            "taille": lib_doc.get("size") or 0,
+            "storage_path": lib_doc.get("storage_path"),
+            "is_deleted": False,
+            "uploaded_at": lib_doc.get("uploaded_at"),
+            "source": "library",
+            "auto_attached": lib_doc.get("auto_attached", False),
+        })
+    own.sort(key=lambda d: d.get("uploaded_at") or "", reverse=True)
+    return own
 
 
 @router.post("/apprenants/{apprenant_id}/documents")

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, NIVEAUX_ANGLAIS, formatDate, formatSize } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
+import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 import { toast } from "sonner";
-import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle } from "@phosphor-icons/react";
+import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle, Eye } from "@phosphor-icons/react";
 
 function Info({ label, value, colSpan }) {
   return (
@@ -21,13 +22,30 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
   const [form, setForm] = useState(dossier);
   const [uploading, setUploading] = useState(null);
   const [extracting, setExtracting] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState(null);
 
   const readonly = mode === "readonly";
 
   const refreshDocs = async () => {
     try {
-      const { data } = await api.get(`/dossiers/${dossier.id}/documents`);
-      setDocs(data);
+      const [docsRes, facturesRes] = await Promise.all([
+        api.get(`/dossiers/${dossier.id}/documents`),
+        api.get(`/dossiers/${dossier.id}/factures-cpf`).catch(() => ({ data: [] })),
+      ]);
+      const baseDocs = docsRes.data || [];
+      // Injecte les factures CPF importées (métadonnées EDOF) comme pseudo-documents
+      // de type "facture" — sans fichier téléchargeable — pour valider le 4/4.
+      const cpfPseudoDocs = (facturesRes.data || []).map((f) => ({
+        id: `cpf-${f.id}`,
+        type: "facture",
+        original_filename:
+          (f.numero_facture ? `Facture ${f.numero_facture}` : `Facture CPF`) +
+          (f.montant ? ` · ${Number(f.montant).toFixed(2)} €` : ""),
+        size: 0,
+        is_cpf_import: true,
+        statut_reglement: f.statut_reglement,
+      }));
+      setDocs([...baseDocs, ...cpfPseudoDocs]);
     } catch {
       // ignore
     }
@@ -112,10 +130,17 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
     }
   };
 
-  const removeDoc = async (id) => {
+  const removeDoc = async (d) => {
     try {
-      await api.delete(`/dossier-documents/${id}`);
-      toast.success("Document supprimé");
+      if (d.source === "library") {
+        // Library doc cross-linké : on ne supprime pas le fichier, on retire juste la méta de cross-link
+        if (!window.confirm("Retirer ce document du dossier ? Le fichier reste dans la bibliothèque centrale.")) return;
+        await api.patch(`/library/${d.id}/detach-apprenant`).catch(() => {});
+        toast.success("Document retiré du dossier");
+      } else {
+        await api.delete(`/dossier-documents/${d.id}`);
+        toast.success("Document supprimé");
+      }
       refreshDocs();
     } catch {
       toast.error("Erreur");
@@ -124,7 +149,10 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const downloadDoc = async (d) => {
     try {
-      const res = await fetch(`${api.defaults.baseURL}/dossier-documents/${d.id}/download`, { credentials: "include" });
+      const path = d.source === "library"
+        ? `/library/${d.id}/download`
+        : `/dossier-documents/${d.id}/download`;
+      const res = await fetch(`${api.defaults.baseURL}${path}`, { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
@@ -480,16 +508,51 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                             className="flex items-center justify-between text-xs bg-slate-50 border border-slate-100 rounded px-2 py-1.5">
                             <span className="inline-flex items-center gap-2 truncate text-slate-700">
                               <FileText size={13} />
-                              <span className="truncate">{d.original_filename}</span>
-                              <span className="text-slate-400">· {formatSize(d.size)}</span>
+                              {d.is_cpf_import ? (
+                                <span className="truncate">{d.original_filename}</span>
+                              ) : (
+                                <button
+                                  onClick={() => setPreviewDoc(d)}
+                                  data-testid={`open-doc-${d.id}`}
+                                  title="Voir le fichier"
+                                  className="truncate text-left hover:text-navy hover:underline cursor-pointer"
+                                >
+                                  {d.original_filename}
+                                </button>
+                              )}
+                              {d.is_cpf_import ? (
+                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                                  Importée EDOF{d.statut_reglement ? ` · ${d.statut_reglement}` : ""}
+                                </span>
+                              ) : d.source === "library" ? (
+                                <>
+                                  <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">
+                                    Bibliothèque{d.auto_attached ? " · Auto" : ""}
+                                  </span>
+                                  <span className="text-slate-400">· {formatSize(d.size)}</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-400">· {formatSize(d.size)}</span>
+                              )}
                             </span>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => downloadDoc(d)} data-testid={`download-doc-${d.id}`}
-                                className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
-                                <Download size={13} />
-                              </button>
-                              {!readonly && (
-                                <button onClick={() => removeDoc(d.id)} data-testid={`delete-doc-${d.id}`}
+                              {!d.is_cpf_import && (
+                                <button onClick={() => setPreviewDoc(d)} data-testid={`preview-doc-${d.id}`}
+                                  title="Voir le fichier"
+                                  className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                              {!d.is_cpf_import && (
+                                <button onClick={() => downloadDoc(d)} data-testid={`download-doc-${d.id}`}
+                                  title="Télécharger"
+                                  className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
+                                  <Download size={13} />
+                                </button>
+                              )}
+                              {!readonly && !d.is_cpf_import && (
+                                <button onClick={() => removeDoc(d)} data-testid={`delete-doc-${d.id}`}
+                                  title="Supprimer / Détacher"
                                   className="h-6 w-6 inline-flex items-center justify-center text-red-500 hover:bg-red-100 rounded">
                                   <Trash size={13} />
                                 </button>
@@ -508,6 +571,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
           </section>
         </div>
       </div>
+      <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={refreshDocs} />
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus, Trash, X } from "@phosphor-icons/react";
+import { UploadSimple, MagnifyingGlass, Receipt, CalendarPlus, Trash, X, ArrowRight, Warning } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import Pagination from "@/components/Pagination";
 
@@ -133,13 +134,30 @@ export default function Facturation() {
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await api.post("/factures-cpf/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`Import terminé : ${data.importees} facture(s) importée(s), ${data.mises_a_jour} mise(s) à jour`);
+      const extraParts = [];
+      if (data.dossiers_passes_regle) extraParts.push(`${data.dossiers_passes_regle} dossier(s) → réglé`);
+      if (data.dossiers_passes_facture) extraParts.push(`${data.dossiers_passes_facture} dossier(s) → facturé`);
+      const extra = extraParts.length ? ` · ${extraParts.join(", ")}` : "";
+      toast.success(`Import terminé : ${data.importees} facture(s) importée(s), ${data.mises_a_jour} mise(s) à jour${extra}`);
       load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || "Import impossible");
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const syncStatuses = async () => {
+    if (!window.confirm("Re-synchroniser les statuts des dossiers en fonction des factures CPF importées ?\n\n• Facture « Réglée » → dossier passe à « Réglé »\n• Facture non payée → dossier passe à « Facturé »\n• Aucun downgrade : seuls les statuts amont sont mis à jour.")) return;
+    try {
+      const { data } = await api.post("/dossiers-admin/sync-status-factures");
+      const msg = `${data.promoted_to_regle} dossier(s) → réglé · ${data.promoted_to_facture} dossier(s) → facturé · ${data.untouched} inchangé(s)`;
+      if (data.promoted_to_regle + data.promoted_to_facture > 0) toast.success(msg);
+      else toast.info(msg);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Synchronisation impossible");
     }
   };
 
@@ -198,6 +216,15 @@ export default function Facturation() {
             title="Supprimer toutes les factures CPF"
           >
             <Trash size={16} className="mr-1.5" /> Tout supprimer
+          </Button>
+          <Button
+            onClick={syncStatuses}
+            data-testid="factures-sync-statuses-btn"
+            variant="outline"
+            className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            title="Re-synchroniser les statuts des dossiers depuis les factures CPF (Réglée → réglé, autres → facturé)"
+          >
+            <ArrowRight size={16} className="mr-1.5" /> Sync statuts
           </Button>
           <Button
             onClick={generateMonthlySessions}
@@ -331,12 +358,49 @@ export default function Facturation() {
                       />
                     </td>
                     <td className="px-4 py-2.5 font-medium text-slate-900 whitespace-nowrap">{f.numero_facture || "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">{f.numero_dossier || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 font-mono text-xs whitespace-nowrap">
+                      {f.numero_dossier ? (
+                        f.apprenant ? (
+                          <Link
+                            to={`/apprenants/${f.apprenant.id}#facture`}
+                            data-testid={`facture-dossier-${f.id}`}
+                            className="hover:text-brand-700 hover:underline"
+                            title="Ouvrir la fiche apprenant — section Facture"
+                          >
+                            {f.numero_dossier}
+                          </Link>
+                        ) : (
+                          f.numero_dossier
+                        )
+                      ) : "—"}
+                    </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {f.apprenant ? (
-                        <span className="text-slate-800">{f.apprenant.prenom} {f.apprenant.nom}</span>
+                      {f.stagiaire && f.stagiaire.kind === "dossier" ? (
+                        <Link
+                          to={f.stagiaire.status === "regle" ? "/archives" : "/actions"}
+                          data-testid={`facture-stagiaire-${f.id}`}
+                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 hover:underline"
+                          title="Ouvrir la fiche stagiaire (dossier Kanban)"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          {f.stagiaire.prenom} {f.stagiaire.nom}
+                          <ArrowRight size={11} weight="bold" className="opacity-50" />
+                        </Link>
+                      ) : f.apprenant ? (
+                        <Link
+                          to={`/apprenants/${f.apprenant.id}#facture`}
+                          data-testid={`facture-apprenant-${f.id}`}
+                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 hover:underline"
+                          title="Ouvrir la fiche apprenant — section Facture"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          {f.apprenant.prenom} {f.apprenant.nom}
+                          <ArrowRight size={11} weight="bold" className="opacity-50" />
+                        </Link>
                       ) : (
-                        <span className="text-slate-400 text-xs italic">Non relié — importez l'export Dossiers</span>
+                        <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs" title="Aucun stagiaire avec ce numéro de dossier CPF">
+                          <Warning size={12} weight="fill" /> Non rattaché
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-900 whitespace-nowrap">{fmtEur(f.montant)}</td>

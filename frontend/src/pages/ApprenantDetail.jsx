@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -14,7 +14,9 @@ import {
   Phone,
   IdentificationCard,
   Kanban,
+  Eye,
 } from "@phosphor-icons/react";
+import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 
 export const CATEGORIES_DOCUMENTS = [
   { key: "certificat", label: "Certificat (ExAssess…)" },
@@ -35,11 +37,15 @@ const fmtSize = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` :
 
 export default function ApprenantDetail() {
   const { id } = useParams();
+  const location = useLocation();
   const [apprenant, setApprenant] = useState(null);
   const [docs, setDocs] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [uploadingCat, setUploadingCat] = useState(null);
+  const [highlightCat, setHighlightCat] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const fileRefs = useRef({});
+  const catRefs = useRef({});
 
   const load = async () => {
     try {
@@ -57,6 +63,23 @@ export default function ApprenantDetail() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+
+  // Quand l'URL contient #facture (ou autre catégorie) on scrolle et on met en surbrillance
+  useEffect(() => {
+    if (!apprenant) return;
+    const hash = (location.hash || "").replace(/^#/, "");
+    if (!hash) return;
+    const validKey = CATEGORIES_DOCUMENTS.find((c) => c.key === hash);
+    if (!validKey) return;
+    const el = catRefs.current[hash];
+    if (!el) return;
+    const scrollTimer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightCat(hash);
+    }, 100);
+    const clearTimer = setTimeout(() => setHighlightCat(null), 2300);
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
+  }, [apprenant, location.hash]);
 
   const upload = async (cat, file) => {
     if (!file) return;
@@ -78,17 +101,26 @@ export default function ApprenantDetail() {
   };
 
   const download = (doc) => {
-    window.open(`${process.env.REACT_APP_BACKEND_URL}/api/documents-apprenants/${doc.id}/download`, "_blank");
+    const path = doc.source === "library"
+      ? `/api/library/${doc.id}/download`
+      : `/api/documents-apprenants/${doc.id}/download`;
+    window.open(`${process.env.REACT_APP_BACKEND_URL}${path}`, "_blank");
   };
 
   const removeDoc = async (doc) => {
     if (!window.confirm(`Supprimer « ${doc.nom_fichier} » ?`)) return;
     try {
-      await api.delete(`/documents-apprenants/${doc.id}`);
+      if (doc.source === "library") {
+        // Détache du document de la bibliothèque (ne supprime pas le fichier)
+        await api.patch(`/library/${doc.id}/detach-apprenant`);
+        toast.success("Document détaché de l'apprenant");
+      } else {
+        await api.delete(`/documents-apprenants/${doc.id}`);
+        toast.success("Document supprimé");
+      }
       setDocs(docs.filter((d) => d.id !== doc.id));
-      toast.success("Document supprimé");
     } catch {
-      toast.error("Suppression impossible");
+      toast.error("Action impossible");
     }
   };
 
@@ -153,8 +185,14 @@ export default function ApprenantDetail() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {CATEGORIES_DOCUMENTS.map((cat) => {
           const files = docs.filter((d) => d.categorie === cat.key);
+          const isHighlighted = highlightCat === cat.key;
           return (
-            <Card key={cat.key} className="border-slate-200 p-4" data-testid={`doc-cat-${cat.key}`}>
+            <Card
+              key={cat.key}
+              ref={(el) => { catRefs.current[cat.key] = el; }}
+              className={`border-slate-200 p-4 transition-all duration-500 ${isHighlighted ? "ring-4 ring-brand-400 ring-offset-2 border-brand-300 shadow-lg" : ""}`}
+              data-testid={`doc-cat-${cat.key}`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <FileText size={16} className="text-brand-600" />
@@ -184,12 +222,48 @@ export default function ApprenantDetail() {
                 <ul className="space-y-1.5">
                   {files.map((f) => (
                     <li key={f.id} className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-100 rounded-md px-2.5 py-1.5" data-testid={`doc-file-${f.id}`}>
-                      <span className="flex-1 truncate text-slate-700 font-medium">{f.nom_fichier}</span>
+                      <button
+                        onClick={() => setPreviewDoc({
+                          id: f.id,
+                          original_filename: f.nom_fichier,
+                          content_type: f.content_type,
+                          size: f.taille,
+                          uploaded_at: f.uploaded_at,
+                          type: f.categorie,
+                          source: f.source,
+                        })}
+                        title="Voir le fichier"
+                        className="flex-1 truncate text-slate-700 font-medium text-left hover:text-brand-700 hover:underline cursor-pointer"
+                        data-testid={`doc-open-${f.id}`}
+                      >
+                        {f.nom_fichier}
+                      </button>
+                      {f.source === "library" && (
+                        <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-[9px] h-4 px-1.5 shrink-0" title={f.auto_attached ? "Rattachée automatiquement depuis la bibliothèque" : "Issue de la bibliothèque centrale"}>
+                          {f.auto_attached ? "Auto" : "Lib"}
+                        </Badge>
+                      )}
                       <span className="text-slate-400 shrink-0">{fmtSize(f.taille)} · {fmtDate(f.uploaded_at)}</span>
-                      <button onClick={() => download(f)} className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0" data-testid={`doc-download-${f.id}`}>
+                      <button
+                        onClick={() => setPreviewDoc({
+                          id: f.id,
+                          original_filename: f.nom_fichier,
+                          content_type: f.content_type,
+                          size: f.taille,
+                          uploaded_at: f.uploaded_at,
+                          type: f.categorie,
+                          source: f.source,
+                        })}
+                        title="Voir le fichier"
+                        className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"
+                        data-testid={`doc-preview-${f.id}`}
+                      >
+                        <Eye size={13} />
+                      </button>
+                      <button onClick={() => download(f)} title="Télécharger" className="h-6 w-6 rounded hover:bg-brand-50 text-brand-700 flex items-center justify-center shrink-0" data-testid={`doc-download-${f.id}`}>
                         <DownloadSimple size={13} />
                       </button>
-                      <button onClick={() => removeDoc(f)} className="h-6 w-6 rounded hover:bg-red-50 text-red-600 flex items-center justify-center shrink-0" data-testid={`doc-delete-${f.id}`}>
+                      <button onClick={() => removeDoc(f)} title="Supprimer / Détacher" className="h-6 w-6 rounded hover:bg-red-50 text-red-600 flex items-center justify-center shrink-0" data-testid={`doc-delete-${f.id}`}>
                         <Trash size={13} />
                       </button>
                     </li>
@@ -200,6 +274,7 @@ export default function ApprenantDetail() {
           );
         })}
       </div>
+      <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={load} />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 Stockage : Emergent Object Storage (persistant entre les déploiements).
 """
 import logging
+import re
 from pathlib import Path
 from typing import Optional, Literal, List
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
@@ -30,6 +31,117 @@ class AttachPayload(BaseModel):
     dossier_id: str
 
 
+# ---------------------------------------------------------------------------
+# Auto-rattachement PDF facture → apprenant
+# ---------------------------------------------------------------------------
+
+# Reconnaît :
+#   - BA-1077, B-A1077, BA1077, BA 1077, ba_1077  → BA1077
+#   - NF-BA-38, NF-BA38, NFBA38                  → NFBA38
+#   - "NF-BA-38 facture NEO" (extra texte après)  → NFBA38
+# Pattern : 1 à 3 segments alphanumériques séparés par - _ . / espace, finissant par 2-8 chiffres,
+# suivi soit de la fin de chaîne, soit d'un espace (ignore le texte descriptif après).
+_INVOICE_NUM_RE = re.compile(
+    r"^\s*([A-Za-z]{1,4})(?:[\s\-_/.]?([A-Za-z]{1,3}))?(?:[\s\-_/.]?([A-Za-z]{1,3}))?[\s\-_/.]?(\d{2,8})(?:\s.*)?\s*$"
+)
+
+
+def _normalize_invoice_number(value: Optional[str]) -> Optional[str]:
+    """Normalise un n° de facture (ou nom de fichier) en clé canonique.
+
+    Exemples :
+        "BA-1077.pdf"            → "BA1077"
+        "B-A1077.pdf"            → "BA1077"
+        "ba_1077"                → "BA1077"
+        "NF-BA-38.pdf"           → "NFBA38"
+        "facture BA-2036.pdf"    → "BA2036"  (préfixe descriptif "facture" enlevé)
+        "Facture-BA-1077.pdf"    → "BA1077"
+        "NF-BA-38 facture NEO.pdf" → "NFBA38" (texte après les digits ignoré)
+        "Rapport.xlsx"           → None
+        "document.pdf"           → None
+    """
+    if not value:
+        return None
+    stem = Path(value).stem.strip()
+    # Enlève les préfixes descriptifs courants (FR + EN) — le vrai n° suit derrière
+    DESCRIPTIVE_PREFIXES = ("facture", "invoice", "note", "scan")
+    low = stem.lower()
+    for prefix in DESCRIPTIVE_PREFIXES:
+        for sep in (" ", "-", "_", ".", ""):
+            tag = prefix + sep
+            if low.startswith(tag) and len(stem) > len(tag):
+                stem = stem[len(tag):].lstrip(" -_.")
+                low = stem.lower()
+                break
+    # Rejette absolument les rapports / docs génériques
+    REJECT_STARTS = ("rapport", "report", "doc", "fichier")
+    if any(low.startswith(p) for p in REJECT_STARTS):
+        return None
+    m = _INVOICE_NUM_RE.match(stem)
+    if not m:
+        return None
+    parts = [g for g in (m.group(1), m.group(2), m.group(3), m.group(4)) if g]
+    cleaned = "".join(parts).upper()
+    return cleaned
+
+
+async def _match_apprenant_for_filename(filename: Optional[str]) -> dict:
+    """Tente d'identifier l'apprenant cible d'un PDF à partir de son nom de fichier.
+
+    Retourne un dict avec :
+      - status: 'ok' | 'unparseable' | 'invoice_not_found' | 'no_apprenant'
+      - apprenant_id (si ok)
+      - apprenant_nom, apprenant_prenom (si ok)
+      - numero_facture, numero_dossier (si trouvés)
+      - reason (message lisible)
+    """
+    key = _normalize_invoice_number(filename)
+    if not key:
+        return {"status": "unparseable", "reason": "Nom de fichier non reconnu comme n° de facture"}
+
+    # Recherche TOUS les n° facture qui, une fois normalisés, matchent la clé
+    facture = None
+    async for f in deps.db.factures_cpf.find(
+        {"numero_facture": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "numero_facture": 1, "numero_dossier": 1},
+    ):
+        if _normalize_invoice_number(f.get("numero_facture")) == key:
+            facture = f
+            break
+
+    if not facture:
+        return {"status": "invoice_not_found", "reason": f"Aucune facture CPF ne correspond au n° « {key} »", "numero_facture": key}
+
+    numero_dossier = facture.get("numero_dossier")
+    if not numero_dossier:
+        return {
+            "status": "no_apprenant",
+            "reason": f"Facture {facture.get('numero_facture')} sans n° de dossier CPF",
+            "numero_facture": facture.get("numero_facture"),
+        }
+
+    apprenant = await deps.db.apprenants.find_one(
+        {"dossier_cpf": numero_dossier},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1},
+    )
+    if not apprenant:
+        return {
+            "status": "no_apprenant",
+            "reason": f"Aucun apprenant avec dossier CPF « {numero_dossier} »",
+            "numero_facture": facture.get("numero_facture"),
+            "numero_dossier": numero_dossier,
+        }
+
+    return {
+        "status": "ok",
+        "apprenant_id": apprenant["id"],
+        "apprenant_nom": apprenant.get("nom"),
+        "apprenant_prenom": apprenant.get("prenom"),
+        "numero_facture": facture.get("numero_facture"),
+        "numero_dossier": numero_dossier,
+    }
+
+
 async def _fetch_bytes(doc: dict) -> tuple:
     """Récupère les bytes + content_type d'un document depuis le stockage objet."""
     path = doc.get("storage_path")
@@ -45,25 +157,38 @@ async def _fetch_bytes(doc: dict) -> tuple:
 
 async def _enrich_with_stagiaire(docs: List[dict]) -> List[dict]:
     dossier_ids = list({d["dossier_id"] for d in docs if d.get("dossier_id")})
-    if not dossier_ids:
-        return docs
-    dossiers = await deps.db.dossiers.find(
-        {"id": {"$in": dossier_ids}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_type": 1}
-    ).to_list(2000)
-    mapping = {d["id"]: d for d in dossiers}
+    apprenant_ids = list({d["apprenant_id"] for d in docs if d.get("apprenant_id")})
+    mapping_dossier = {}
+    mapping_apprenant = {}
+    if dossier_ids:
+        async for d in deps.db.dossiers.find(
+            {"id": {"$in": dossier_ids}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_type": 1}
+        ):
+            mapping_dossier[d["id"]] = d
+    if apprenant_ids:
+        async for a in deps.db.apprenants.find(
+            {"id": {"$in": apprenant_ids}}, {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "dossier_cpf": 1}
+        ):
+            mapping_apprenant[a["id"]] = a
     for doc in docs:
         did = doc.get("dossier_id")
-        if did and did in mapping:
-            d = mapping[did]
+        if did and did in mapping_dossier:
+            d = mapping_dossier[did]
             doc["stagiaire"] = {"id": d["id"], "nom": d.get("nom"), "prenom": d.get("prenom"), "financeur_type": d.get("financeur_type")}
         else:
             doc["stagiaire"] = None
+        aid = doc.get("apprenant_id")
+        if aid and aid in mapping_apprenant:
+            a = mapping_apprenant[aid]
+            doc["apprenant"] = {"id": a["id"], "nom": a.get("nom"), "prenom": a.get("prenom"), "dossier_cpf": a.get("dossier_cpf")}
+        else:
+            doc["apprenant"] = None
     return docs
 
 
 @router.get("/library")
 async def list_library(
-    scope: str = Query("all", regex="^(all|unattached|attached)$"),
+    scope: str = Query("all", pattern="^(all|unattached|attached)$"),
     type: Optional[str] = None,
     q: Optional[str] = None,
     user: dict = Depends(deps.get_current_user),
@@ -71,9 +196,15 @@ async def list_library(
     import re as _re
     base_query: dict = {}
     if scope == "unattached":
-        base_query["$or"] = [{"dossier_id": None}, {"dossier_id": {"$exists": False}}]
+        base_query["$and"] = [
+            {"$or": [{"dossier_id": None}, {"dossier_id": {"$exists": False}}]},
+            {"$or": [{"apprenant_id": None}, {"apprenant_id": {"$exists": False}}]},
+        ]
     elif scope == "attached":
-        base_query["dossier_id"] = {"$nin": [None, ""]}
+        base_query["$or"] = [
+            {"dossier_id": {"$nin": [None, ""]}},
+            {"apprenant_id": {"$nin": [None, ""]}},
+        ]
     if type and type in DOC_TYPE_LABEL:
         base_query["type"] = type
     docs = await deps.db.dossier_documents.find(base_query, {"_id": 0}).sort("uploaded_at", -1).to_list(5000)
@@ -118,7 +249,12 @@ async def list_library(
 @router.get("/library-stats")
 async def library_stats(user: dict = Depends(deps.get_current_user)):
     total = await deps.db.dossier_documents.count_documents({})
-    attached = await deps.db.dossier_documents.count_documents({"dossier_id": {"$nin": [None, ""]}})
+    attached = await deps.db.dossier_documents.count_documents({
+        "$or": [
+            {"dossier_id": {"$nin": [None, ""]}},
+            {"apprenant_id": {"$nin": [None, ""]}},
+        ]
+    })
     by_type = {}
     for t in DOC_TYPE_LABEL.keys():
         by_type[t] = await deps.db.dossier_documents.count_documents({"type": t})
@@ -154,6 +290,7 @@ async def upload_library(
     document = {
         "id": doc_id,
         "dossier_id": dossier_id,
+        "apprenant_id": None,
         "type": type,
         "filename": path.split("/")[-1],  # back-compat affichage
         "original_filename": file.filename or path.split("/")[-1],
@@ -162,6 +299,23 @@ async def upload_library(
         "storage_path": result.get("path", path),
         "uploaded_at": deps.now_utc().isoformat(),
     }
+    # Auto-rattachement si c'est une facture (basé sur n° dans le nom de fichier)
+    # NB : on n'auto-rattache que les PDF/images, jamais les Excel/Word/CSV (mêmes règles que /library/auto-attach)
+    if type == "facture" and not dossier_id:
+        skip_exts = {"xlsx", "xls", "xlsm", "csv", "doc", "docx"}
+        upload_ext = Path(file.filename or "").suffix.lower().lstrip(".")
+        if upload_ext not in skip_exts:
+            match = await _match_apprenant_for_filename(file.filename)
+            # Dès qu'on a trouvé une facture CPF correspondante, on sauvegarde la méta
+            # pour permettre le cross-link via dossier.financeur_nom même si l'apprenant n'existe pas
+            if match.get("numero_facture"):
+                document["auto_attach_meta"] = {
+                    "numero_facture": match.get("numero_facture"),
+                    "numero_dossier": match.get("numero_dossier"),
+                }
+            if match.get("status") == "ok":
+                document["apprenant_id"] = match["apprenant_id"]
+                document["auto_attached"] = True
     await deps.db.dossier_documents.insert_one(dict(document))
     document.pop("_id", None)
     enriched = await _enrich_with_stagiaire([document])
@@ -178,6 +332,227 @@ async def attach_document(document_id: str, payload: AttachPayload, user: dict =
     updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
     enriched = await _enrich_with_stagiaire([updated])
     return enriched[0]
+
+
+class AttachApprenantPayload(BaseModel):
+    apprenant_id: str
+
+
+@router.patch("/library/{document_id}/attach-apprenant")
+async def attach_document_apprenant(document_id: str, payload: AttachApprenantPayload, user: dict = Depends(deps.get_current_user)):
+    """Rattachement manuel d'un document de la bibliothèque à un apprenant."""
+    if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "Document introuvable")
+    if not await deps.db.apprenants.find_one({"id": payload.apprenant_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(400, "Apprenant introuvable")
+    await deps.db.dossier_documents.update_one(
+        {"id": document_id}, {"$set": {"apprenant_id": payload.apprenant_id}}
+    )
+    updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    enriched = await _enrich_with_stagiaire([updated])
+    return enriched[0]
+
+
+@router.patch("/library/{document_id}/detach-apprenant")
+async def detach_document_apprenant(document_id: str, user: dict = Depends(deps.get_current_user)):
+    if not await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "Document introuvable")
+    await deps.db.dossier_documents.update_one(
+        {"id": document_id},
+        {"$set": {"apprenant_id": None, "auto_attached": False}, "$unset": {"auto_attach_meta": ""}},
+    )
+    updated = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    enriched = await _enrich_with_stagiaire([updated])
+    return enriched[0]
+
+
+@router.post("/library/auto-attach")
+async def auto_attach_factures(user: dict = Depends(deps.get_current_user)):
+    """Parcourt toutes les factures non-rattachées et tente un auto-rattachement.
+
+    Pour chaque PDF facture orphelin :
+      1. Normalise le n° depuis le nom de fichier
+      2. Cherche la facture CPF correspondante
+      3. Récupère le n° de dossier CPF
+      4. Cherche l'apprenant avec ce dossier_cpf
+      5. Rattache si tout matche
+
+    Retourne un rapport détaillé (succès + anomalies).
+    """
+    # Filtre : factures non rattachées à un apprenant ET PDF/Image (pas xlsx ni rapports)
+    query = {
+        "type": "facture",
+        "$or": [
+            {"apprenant_id": None},
+            {"apprenant_id": {"$exists": False}},
+        ],
+    }
+    docs = await deps.db.dossier_documents.find(query, {"_id": 0}).to_list(10000)
+
+    report = {
+        "total_examined": len(docs),
+        "attached": 0,
+        "already_attached": 0,
+        "skipped": [],          # fichiers ignorés (format non reconnu, extension non PDF, etc.)
+        "anomalies": [],        # facture introuvable, dossier orphelin
+        "successes": [],        # liste des rattachements effectués
+    }
+
+    for doc in docs:
+        original = doc.get("original_filename") or doc.get("filename") or ""
+        ext = Path(original).suffix.lower().lstrip(".")
+        # Ignore les fichiers non-facture (Excel, rapports, etc.)
+        if ext in ("xlsx", "xls", "xlsm", "csv", "doc", "docx"):
+            report["skipped"].append({
+                "id": doc.get("id"),
+                "filename": original,
+                "reason": f"Format {ext.upper()} ignoré (auto-rattachement réservé aux PDF/images de factures)",
+            })
+            continue
+
+        match = await _match_apprenant_for_filename(original)
+        status = match.get("status")
+        # On stocke toujours la méta dès qu'on a trouvé une facture CPF correspondante,
+        # pour permettre le cross-link via dossier.financeur_nom même si l'apprenant n'existe pas
+        meta_to_save = None
+        if match.get("numero_facture"):
+            meta_to_save = {
+                "numero_facture": match.get("numero_facture"),
+                "numero_dossier": match.get("numero_dossier"),
+            }
+        if status == "ok":
+            await deps.db.dossier_documents.update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "apprenant_id": match["apprenant_id"],
+                    "auto_attached": True,
+                    "auto_attach_meta": meta_to_save or {
+                        "numero_facture": match.get("numero_facture"),
+                        "numero_dossier": match.get("numero_dossier"),
+                    },
+                }},
+            )
+            report["attached"] += 1
+            report["successes"].append({
+                "id": doc.get("id"),
+                "filename": original,
+                "apprenant": f"{match.get('apprenant_prenom', '')} {match.get('apprenant_nom', '')}".strip(),
+                "numero_facture": match.get("numero_facture"),
+                "numero_dossier": match.get("numero_dossier"),
+            })
+        elif status == "unparseable":
+            report["skipped"].append({
+                "id": doc.get("id"),
+                "filename": original,
+                "reason": match.get("reason"),
+            })
+        else:  # invoice_not_found, no_apprenant
+            # Pour no_apprenant on enregistre quand même la méta pour permettre le cross-link dossier
+            if meta_to_save and status == "no_apprenant":
+                await deps.db.dossier_documents.update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"auto_attach_meta": meta_to_save}},
+                )
+            report["anomalies"].append({
+                "id": doc.get("id"),
+                "filename": original,
+                "reason": match.get("reason"),
+                "numero_facture": match.get("numero_facture"),
+                "numero_dossier": match.get("numero_dossier"),
+            })
+
+    return report
+
+
+@router.post("/library/auto-attach/export-xlsx")
+async def export_auto_attach_report(payload: dict = Body(...), user: dict = Depends(deps.get_current_user)):
+    """Convertit un rapport d'auto-rattachement en fichier Excel (3 feuilles).
+
+    Le client renvoie le rapport JSON retourné par /library/auto-attach. Le serveur
+    génère un xlsx stylé (Rattachements / Anomalies / Ignorés) à transmettre à l'équipe admin.
+    """
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_align = Alignment(horizontal="left", vertical="center")
+
+    def _add_sheet(name: str, headers: list, rows: list, header_color: str):
+        ws = wb.create_sheet(name)
+        fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+        for col_idx, h in enumerate(headers, start=1):
+            c = ws.cell(row=1, column=col_idx, value=h)
+            c.font = header_font
+            c.fill = fill
+            c.alignment = header_align
+        for row_idx, row in enumerate(rows, start=2):
+            for col_idx, val in enumerate(row, start=1):
+                ws.cell(row=row_idx, column=col_idx, value=val if val is not None else "")
+        # Ajuste largeur colonnes (auto-ish)
+        for col_idx, h in enumerate(headers, start=1):
+            max_len = max([len(str(h))] + [len(str(r[col_idx - 1] or "")) for r in rows] + [10])
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 60)
+        ws.freeze_panes = "A2"
+
+    # Feuille 1 : Synthèse
+    ws_syn = wb.create_sheet("Synthèse")
+    ws_syn["A1"] = "Rapport d'auto-rattachement des factures"
+    ws_syn["A1"].font = Font(bold=True, size=14)
+    ws_syn["A3"] = "Documents analysés"
+    ws_syn["B3"] = payload.get("total_examined", 0)
+    ws_syn["A4"] = "Rattachements effectués"
+    ws_syn["B4"] = payload.get("attached", 0)
+    ws_syn["A5"] = "Anomalies (à traiter manuellement)"
+    ws_syn["B5"] = len(payload.get("anomalies", []))
+    ws_syn["A6"] = "Fichiers ignorés (format non reconnu)"
+    ws_syn["B6"] = len(payload.get("skipped", []))
+    for row in range(3, 7):
+        ws_syn.cell(row=row, column=1).font = Font(bold=True)
+    ws_syn.column_dimensions["A"].width = 40
+    ws_syn.column_dimensions["B"].width = 15
+
+    # Feuille 2 : Rattachements
+    _add_sheet(
+        "Rattachements",
+        ["Fichier", "Apprenant", "N° facture", "N° dossier CPF"],
+        [[s.get("filename"), s.get("apprenant"), s.get("numero_facture"), s.get("numero_dossier")] for s in payload.get("successes", [])],
+        "10B981",  # emerald
+    )
+
+    # Feuille 3 : Anomalies
+    _add_sheet(
+        "Anomalies",
+        ["Fichier", "Motif", "N° facture détecté", "N° dossier détecté"],
+        [[a.get("filename"), a.get("reason"), a.get("numero_facture"), a.get("numero_dossier")] for a in payload.get("anomalies", [])],
+        "DC2626",  # red
+    )
+
+    # Feuille 4 : Ignorés
+    _add_sheet(
+        "Ignorés",
+        ["Fichier", "Motif"],
+        [[s.get("filename"), s.get("reason")] for s in payload.get("skipped", [])],
+        "64748B",  # slate
+    )
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    filename = f"rapport_rattachement_factures_{deps.now_utc().strftime('%Y-%m-%d_%H%M')}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(content)),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.patch("/library/{document_id}/detach")
@@ -243,7 +618,19 @@ async def download_library_doc(document_id: str, user: dict = Depends(deps.get_c
 
 @router.get("/library/{document_id}/preview")
 async def preview_library_doc(document_id: str, user: dict = Depends(deps.get_current_user)):
+    # 1) cherche dans dossier_documents (library + dossier docs)
     doc = await deps.db.dossier_documents.find_one({"id": document_id}, {"_id": 0})
+    # 2) fallback : cherche dans apprenant_documents (docs natifs des apprenants)
+    if not doc:
+        ap_doc = await deps.db.apprenant_documents.find_one({"id": document_id, "is_deleted": False}, {"_id": 0})
+        if ap_doc:
+            # Normalise les champs pour _fetch_bytes
+            doc = {
+                "storage_path": ap_doc.get("storage_path"),
+                "content_type": ap_doc.get("content_type"),
+                "original_filename": ap_doc.get("nom_fichier"),
+                "filename": ap_doc.get("nom_fichier"),
+            }
     if not doc:
         raise HTTPException(404, "Document introuvable")
     data, ctype = await _fetch_bytes(doc)

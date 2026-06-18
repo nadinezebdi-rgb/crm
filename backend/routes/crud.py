@@ -16,7 +16,7 @@ def make_crud(name: str, collection: str, payload_model):
         query = {}
         if q:
             query = {"$or": [
-                {k: {"$regex": q, "$options": "i"}} for k in ("nom", "prenom", "email", "raison_sociale", "code_interne")
+                {k: {"$regex": q, "$options": "i"}} for k in ("nom", "prenom", "email", "raison_sociale", "code_interne", "dossier_cpf")
             ]}
         items = await deps.db[collection].find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
         return items

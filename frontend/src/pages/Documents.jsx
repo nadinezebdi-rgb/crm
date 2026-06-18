@@ -20,8 +20,10 @@ import {
   Receipt,
   CheckCircle,
   Eye,
+  MagicWand,
 } from "@phosphor-icons/react";
 import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
+import AutoAttachReportDialog from "@/components/AutoAttachReportDialog";
 
 const DOC_TYPES = [
   { id: "facture", label: "Facture" },
@@ -158,6 +160,8 @@ export default function Documents() {
   const [selected, setSelected] = useState(new Set());
   const [attachFor, setAttachFor] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [autoAttachReport, setAutoAttachReport] = useState(null);
+  const [autoAttaching, setAutoAttaching] = useState(false);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -237,7 +241,11 @@ export default function Documents() {
 
   const detachOne = async (d) => {
     try {
-      await api.patch(`/library/${d.id}/detach`);
+      if (d.apprenant) {
+        await api.patch(`/library/${d.id}/detach-apprenant`);
+      } else {
+        await api.patch(`/library/${d.id}/detach`);
+      }
       toast.success("Document détaché");
       load();
     } catch { toast.error("Erreur"); }
@@ -278,6 +286,24 @@ export default function Documents() {
     } catch { toast.error("Erreur"); }
   };
 
+  const runAutoAttach = async () => {
+    if (autoAttaching) return;
+    if (!window.confirm("Lancer l'auto-rattachement des factures PDF vers les apprenants ? (Basé sur le n° de facture extrait du nom de fichier)")) return;
+    setAutoAttaching(true);
+    try {
+      const { data } = await api.post("/library/auto-attach");
+      setAutoAttachReport(data);
+      const msg = `${data.attached} rattachée(s)${data.anomalies.length ? ` · ${data.anomalies.length} anomalie(s)` : ""}${data.skipped.length ? ` · ${data.skipped.length} ignoré(s)` : ""}`;
+      if (data.attached > 0) toast.success(msg);
+      else toast.info(msg);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Erreur lors du rattachement automatique");
+    } finally {
+      setAutoAttaching(false);
+    }
+  };
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50" data-testid="documents-page">
       {/* Header */}
@@ -293,6 +319,16 @@ export default function Documents() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={runAutoAttach}
+              disabled={autoAttaching}
+              data-testid="auto-attach-btn"
+              title="Rattache automatiquement les PDF de factures aux apprenants en utilisant le n° de facture extrait du nom de fichier"
+              className="h-9 px-3 text-sm font-semibold text-purple-700 border border-purple-200 bg-purple-50 hover:bg-purple-100 rounded-md inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {autoAttaching ? <Spinner size={14} className="animate-spin" /> : <MagicWand size={14} weight="bold" />}
+              Rattacher tout
+            </button>
             <select
               value={uploadType}
               onChange={(e) => setUploadType(e.target.value)}
@@ -461,6 +497,11 @@ export default function Documents() {
                         >
                           {d.original_filename}
                         </button>
+                        {d.is_edof_source && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 shrink-0" title={d.edof_import_stats ? `Import : ${d.edof_import_stats.importees} importée(s), ${d.edof_import_stats.mises_a_jour} mise(s) à jour` : "Fichier source d'un import EDOF"}>
+                            Source EDOF
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
@@ -478,6 +519,11 @@ export default function Documents() {
                         <Link to="/actions" className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:underline" data-testid={`lib-stagiaire-${d.id}`}>
                           <CheckCircle size={13} weight="fill" /> {d.stagiaire.prenom} {d.stagiaire.nom}
                         </Link>
+                      ) : d.apprenant ? (
+                        <Link to={`/apprenants/${d.apprenant.id}`} className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:underline" data-testid={`lib-apprenant-${d.id}`} title={`Dossier CPF · ${d.apprenant.dossier_cpf || '—'}`}>
+                          <CheckCircle size={13} weight="fill" /> {d.apprenant.prenom} {d.apprenant.nom}
+                          {d.auto_attached && <span className="text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 rounded px-1 py-0.5 ml-1">Auto</span>}
+                        </Link>
                       ) : (
                         <button onClick={() => setAttachFor(d)} data-testid={`lib-attach-${d.id}`} className="text-xs text-amber-700 hover:underline inline-flex items-center gap-1.5">
                           <LinkIcon size={13} /> Rattacher…
@@ -490,8 +536,8 @@ export default function Documents() {
                       <div className="flex items-center gap-1">
                         <button onClick={() => setPreviewDoc(d)} title="Aperçu" data-testid={`lib-view-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-navy hover:bg-blue-50 rounded"><Eye size={14} weight="bold" /></button>
                         <button onClick={() => downloadDoc(d)} title="Télécharger" data-testid={`lib-dl-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"><DownloadSimple size={14} /></button>
-                        {d.stagiaire ? (
-                          <button onClick={() => detachOne(d)} title="Détacher du stagiaire" data-testid={`lib-detach-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded"><LinkBreak size={14} /></button>
+                        {d.stagiaire || d.apprenant ? (
+                          <button onClick={() => detachOne(d)} title="Détacher" data-testid={`lib-detach-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded"><LinkBreak size={14} /></button>
                         ) : (
                           <button onClick={() => setAttachFor(d)} title="Rattacher" data-testid={`lib-attach-icon-${d.id}`} className="h-7 w-7 inline-flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded"><LinkIcon size={14} /></button>
                         )}
@@ -511,6 +557,7 @@ export default function Documents() {
 
       <AttachDialog open={!!attachFor} document={attachFor} onClose={() => setAttachFor(null)} onAttached={load} />
       <DocumentPreviewDialog open={!!previewDoc} document={previewDoc} onClose={() => setPreviewDoc(null)} onAttached={load} />
+      <AutoAttachReportDialog open={!!autoAttachReport} report={autoAttachReport} onClose={() => setAutoAttachReport(null)} />
     </div>
   );
 }
