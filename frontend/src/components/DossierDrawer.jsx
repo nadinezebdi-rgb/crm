@@ -4,7 +4,7 @@ import { STATUS_COLUMNS, STATUS_LABELS, DOC_TYPES, FINANCEUR_TYPES, NIVEAUX_ANGL
 import FinanceurBadge from "@/components/FinanceurBadge";
 import DocumentPreviewDialog from "@/components/DocumentPreviewDialog";
 import { toast } from "sonner";
-import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle, Eye } from "@phosphor-icons/react";
+import { X, PencilSimple, Trash, FloppyDisk, Upload, FileText, Download, Spinner, FilePdf, Sparkle, Archive, CheckCircle, Eye, UploadSimple } from "@phosphor-icons/react";
 
 function Info({ label, value, colSpan }) {
   return (
@@ -23,6 +23,7 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
   const [uploading, setUploading] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [uploadingFactureId, setUploadingFactureId] = useState(null);
 
   const readonly = mode === "readonly";
 
@@ -37,6 +38,8 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
       // de type "facture" — sans fichier téléchargeable — pour valider le 4/4.
       const cpfPseudoDocs = (facturesRes.data || []).map((f) => ({
         id: `cpf-${f.id}`,
+        facture_cpf_id: f.id,
+        numero_facture: f.numero_facture,
         type: "facture",
         original_filename:
           (f.numero_facture ? `Facture ${f.numero_facture}` : `Facture CPF`) +
@@ -45,6 +48,18 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
         is_cpf_import: true,
         statut_reglement: f.statut_reglement,
       }));
+      // Marque les pseudo-docs CPF dont une PDF library a déjà été cross-linké, pour
+      // n'afficher le bouton "Importer le PDF" que sur les lignes orphelines
+      const matchedNumeros = new Set(
+        baseDocs
+          .filter((b) => b.auto_attach_meta?.numero_facture)
+          .map((b) => String(b.auto_attach_meta.numero_facture).toUpperCase())
+      );
+      cpfPseudoDocs.forEach((p) => {
+        if (p.numero_facture && matchedNumeros.has(String(p.numero_facture).toUpperCase())) {
+          p.has_matched_pdf = true;
+        }
+      });
       setDocs([...baseDocs, ...cpfPseudoDocs]);
     } catch {
       // ignore
@@ -170,6 +185,22 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
       URL.revokeObjectURL(objUrl);
     } catch (e) {
       toast.error("Impossible de télécharger le fichier");
+    }
+  };
+
+  const uploadPdfForFacture = async (factureId, file) => {
+    if (!file) return;
+    setUploadingFactureId(factureId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post(`/factures-cpf/${factureId}/upload`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("PDF rattaché à la facture");
+      refreshDocs();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Upload impossible");
+    } finally {
+      setUploadingFactureId(null);
     }
   };
 
@@ -554,6 +585,29 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                                   className="h-6 w-6 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded">
                                   <Download size={13} />
                                 </button>
+                              )}
+                              {!readonly && d.is_cpf_import && !d.has_matched_pdf && d.facture_cpf_id && (
+                                <label
+                                  title="Importer le PDF de cette facture"
+                                  data-testid={`upload-pdf-for-${d.facture_cpf_id}`}
+                                  className="h-6 w-6 inline-flex items-center justify-center text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer"
+                                >
+                                  {uploadingFactureId === d.facture_cpf_id ? (
+                                    <Spinner size={13} className="animate-spin" />
+                                  ) : (
+                                    <UploadSimple size={13} />
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      uploadPdfForFacture(d.facture_cpf_id, f);
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
                               )}
                               {!readonly && (
                                 <button onClick={() => removeDoc(d)} data-testid={`delete-doc-${d.id}`}
