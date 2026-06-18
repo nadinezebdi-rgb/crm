@@ -115,7 +115,42 @@ async def list_active_dossiers(user: dict = Depends(deps.get_current_user)):
     ).sort("created_at", -1).to_list(5000)
     for d in items:
         await attach_formateur(d)
+    await _enrich_doc_progress(items)
     return items
+
+
+async def _enrich_doc_progress(dossiers: list) -> None:
+    """Ajoute un champ `doc_progress: {count, total: 4, types: [...]}` sur chaque dossier.
+
+    Compte les types de documents distincts présents (devis_signe, attestation, facture, justificatif_paiement).
+    Une facture CPF importée compte comme "facture" (même règle que le drawer 4/4).
+    """
+    if not dossiers:
+        return
+    ids = [d["id"] for d in dossiers]
+    financeur_nums = list({d.get("financeur_nom") for d in dossiers if d.get("financeur_nom")})
+    types_by_dossier: dict = {}
+    async for doc in deps.db.dossier_documents.find(
+        {"dossier_id": {"$in": ids}, "type": {"$in": ["devis_signe", "attestation", "facture", "justificatif_paiement"]}},
+        {"_id": 0, "dossier_id": 1, "type": 1},
+    ):
+        types_by_dossier.setdefault(doc["dossier_id"], set()).add(doc["type"])
+    factures_by_numero: set = set()
+    if financeur_nums:
+        async for f in deps.db.factures_cpf.find(
+            {"numero_dossier": {"$in": financeur_nums}}, {"_id": 0, "numero_dossier": 1}
+        ):
+            factures_by_numero.add(f["numero_dossier"])
+    for d in dossiers:
+        types_present = types_by_dossier.get(d["id"], set()).copy()
+        if d.get("financeur_nom") and d["financeur_nom"] in factures_by_numero:
+            types_present.add("facture")
+        d["doc_progress"] = {
+            "count": len(types_present),
+            "total": 4,
+            "types": sorted(types_present),
+            "complete": len(types_present) >= 4,
+        }
 
 
 @router.get("/dossiers/closed")

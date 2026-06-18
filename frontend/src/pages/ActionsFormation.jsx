@@ -90,7 +90,24 @@ export default function ActionsFormation() {
                     <div className="text-sm font-semibold text-slate-900 font-display">{s.prenom} {s.nom}</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">{s.formation || "—"}</div>
                   </div>
-                  <FinanceurBadge value={s.financeur_type} />
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <FinanceurBadge value={s.financeur_type} />
+                    {s.doc_progress && (
+                      <span
+                        className={`inline-flex items-center text-[10px] font-bold tracking-wider border rounded px-1.5 py-0.5 ${
+                          s.doc_progress.complete
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : s.doc_progress.count >= 2
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                        }`}
+                        title={`${s.doc_progress.count}/4 types de documents présents`}
+                        data-testid={`action-progress-${s.id}`}
+                      >
+                        {s.doc_progress.count}/4
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-[11px] text-slate-500 space-y-0.5">
                   <div>Formateur · {s.formateur_nom || "non assigné"}</div>

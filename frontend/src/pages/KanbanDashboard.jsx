@@ -41,6 +41,25 @@ function NextStatusButton({ dossier, onChange }) {
   );
 }
 
+function DocProgressBadge({ progress }) {
+  if (!progress) return null;
+  const { count = 0, total = 4, complete } = progress;
+  const tone = complete
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : count >= 2
+    ? "bg-amber-50 text-amber-700 border-amber-200"
+    : "bg-red-50 text-red-700 border-red-200";
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-[10px] font-bold tracking-wider border rounded px-1.5 py-0.5 ${tone}`}
+      title={`${count}/${total} types de documents présents (devis signé, attestation, facture, justificatif)`}
+      data-testid={`doc-progress-${count}-${total}`}
+    >
+      {count}/{total}
+    </span>
+  );
+}
+
 function DossierCard({ dossier, onChange }) {
   return (
     <div
@@ -56,7 +75,10 @@ function DossierCard({ dossier, onChange }) {
             <div className="text-[11px] text-slate-500 truncate max-w-[200px]">{dossier.formation}</div>
           ) : null}
         </div>
-        <FinanceurBadge value={dossier.financeur_type} />
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <FinanceurBadge value={dossier.financeur_type} />
+          <DocProgressBadge progress={dossier.doc_progress} />
+        </div>
       </div>
       <div className="flex items-center gap-3 text-[11px] text-slate-500">
         <span className="inline-flex items-center gap-1">
