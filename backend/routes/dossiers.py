@@ -491,6 +491,61 @@ async def sync_status_from_factures_endpoint(user: dict = Depends(deps.get_curre
     return await sync_dossier_statuses_from_factures()
 
 
+@router.post("/dossiers-admin/un-archive-incomplete")
+async def un_archive_incomplete_dossiers(user: dict = Depends(deps.get_current_user)):
+    """Ramène en statut actif tous les dossiers `regle` qui ont moins de 4 documents.
+
+    Action corrective : utile pour corriger un sur-archivage causé par d'anciennes règles
+    (avant l'exigence des 4 documents). On rabaisse à `facture` s'il y a au moins une
+    facture CPF liée, sinon à `en_formation`.
+    """
+    moved_to_facture = 0
+    moved_to_en_formation = 0
+    kept = 0
+    details: List[dict] = []
+
+    async for d in deps.db.dossiers.find(
+        {"status": "regle"},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_nom": 1, "date_cloture": 1},
+    ):
+        doc_types_count = await _dossier_doc_types_count(d)
+        if doc_types_count >= 4:
+            kept += 1
+            continue
+        # Détermine le nouveau statut
+        new_status = "en_formation"
+        if d.get("financeur_nom"):
+            has_facture = await deps.db.factures_cpf.find_one(
+                {"numero_dossier": d["financeur_nom"]}, {"_id": 1}
+            )
+            if has_facture:
+                new_status = "facture"
+        await deps.db.dossiers.update_one(
+            {"id": d["id"]},
+            {"$set": {"status": new_status, "updated_at": deps.now_utc().isoformat()},
+             "$unset": {"date_cloture": ""}},
+        )
+        if new_status == "facture":
+            moved_to_facture += 1
+        else:
+            moved_to_en_formation += 1
+        details.append({
+            "dossier_id": d["id"],
+            "stagiaire": f"{d.get('prenom', '')} {d.get('nom', '')}".strip(),
+            "from": "regle",
+            "to": new_status,
+            "doc_types_count": doc_types_count,
+        })
+
+    return {
+        "moved_to_facture": moved_to_facture,
+        "moved_to_en_formation": moved_to_en_formation,
+        "kept_in_regle": kept,
+        "total_moved": moved_to_facture + moved_to_en_formation,
+        "details": details,
+    }
+
+
 # ============================================================================
 # ADMIN — Vider tous les dossiers + Importer depuis EDOF/CSV/XLSX
 # ============================================================================
