@@ -222,19 +222,22 @@ async def get_linked_factures(dossier_id: str, user: dict = Depends(deps.get_cur
 async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_user)):
     """Renvoie tous les documents pertinents pour ce dossier :
       1) Documents uploadés directement (dossier_documents avec dossier_id == dossier_id)
-      2) Documents de la bibliothèque centrale rattachés à l'apprenant correspondant
-         (cross-link via dossier.financeur_nom == apprenant.dossier_cpf == library.auto_attach_meta.numero_dossier)
-    Ainsi les vrais PDF de factures uploadés via la bibliothèque apparaissent dans le dossier clôturé.
+      2) Documents de la bibliothèque centrale cross-linkés via :
+         - dossier.financeur_nom == library.auto_attach_meta.numero_dossier
+         - OU le n° de facture extrait du nom de fichier matche une facture CPF du dossier
     """
+    from routes.library import _normalize_invoice_number  # import paresseux pour éviter cycle
+
     items = await deps.db.dossier_documents.find(
         {"dossier_id": dossier_id}, {"_id": 0}
     ).sort("uploaded_at", -1).to_list(500)
-    # Cross-link via numero_dossier (EDOF) si présent
+    seen_ids = {it["id"] for it in items}
+
     dossier = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0, "financeur_nom": 1})
     if dossier and dossier.get("financeur_nom"):
         numero = dossier["financeur_nom"]
-        # Library docs auto-rattachées via le n° de dossier
-        seen_ids = {it["id"] for it in items}
+
+        # (A) Cross-link par numero_dossier (déjà attaché par l'auto-rattachement)
         async for libdoc in deps.db.dossier_documents.find(
             {
                 "auto_attach_meta.numero_dossier": numero,
@@ -246,7 +249,31 @@ async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_
                 libdoc["source"] = "library"
                 items.append(libdoc)
                 seen_ids.add(libdoc["id"])
-    # Tri final par date d'upload décroissante
+
+        # (B) Cross-link par numero_facture : matche les library PDF dont le nom contient
+        # un n° de facture présent dans factures_cpf du dossier
+        factures = await deps.db.factures_cpf.find(
+            {"numero_dossier": numero, "numero_facture": {"$nin": [None, ""]}},
+            {"_id": 0, "numero_facture": 1},
+        ).to_list(500)
+        normalized_targets = {
+            _normalize_invoice_number(f["numero_facture"]): f["numero_facture"]
+            for f in factures if _normalize_invoice_number(f.get("numero_facture"))
+        }
+        if normalized_targets:
+            async for libdoc in deps.db.dossier_documents.find(
+                {"type": "facture", "is_edof_source": {"$ne": True}},
+                {"_id": 0},
+            ):
+                if libdoc.get("id") in seen_ids:
+                    continue
+                normalized_doc = _normalize_invoice_number(libdoc.get("original_filename"))
+                if normalized_doc and normalized_doc in normalized_targets:
+                    libdoc["source"] = "library"
+                    libdoc["matched_facture"] = normalized_targets[normalized_doc]
+                    items.append(libdoc)
+                    seen_ids.add(libdoc["id"])
+
     items.sort(key=lambda d: d.get("uploaded_at") or "", reverse=True)
     return items
 

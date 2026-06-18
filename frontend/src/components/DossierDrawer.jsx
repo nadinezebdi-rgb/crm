@@ -132,8 +132,13 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
 
   const removeDoc = async (d) => {
     try {
-      if (d.source === "library") {
-        // Library doc cross-linké : on ne supprime pas le fichier, on retire juste la méta de cross-link
+      if (d.is_cpf_import) {
+        if (!window.confirm("Supprimer cette ligne de facture importée depuis EDOF ?")) return;
+        // l'id du pseudo-doc est `cpf-<facture_id>` (voir refreshDocs)
+        const factureId = String(d.id || "").replace(/^cpf-/, "");
+        await api.delete(`/factures-cpf/${factureId}`);
+        toast.success("Facture EDOF supprimée");
+      } else if (d.source === "library") {
         if (!window.confirm("Retirer ce document du dossier ? Le fichier reste dans la bibliothèque centrale.")) return;
         await api.patch(`/library/${d.id}/detach-apprenant`).catch(() => {});
         toast.success("Document retiré du dossier");
@@ -550,9 +555,9 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                                   <Download size={13} />
                                 </button>
                               )}
-                              {!readonly && !d.is_cpf_import && (
+                              {!readonly && (
                                 <button onClick={() => removeDoc(d)} data-testid={`delete-doc-${d.id}`}
-                                  title="Supprimer / Détacher"
+                                  title={d.is_cpf_import ? "Supprimer cette ligne EDOF" : "Supprimer / Détacher"}
                                   className="h-6 w-6 inline-flex items-center justify-center text-red-500 hover:bg-red-100 rounded">
                                   <Trash size={13} />
                                 </button>
