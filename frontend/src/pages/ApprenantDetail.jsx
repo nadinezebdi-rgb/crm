@@ -222,7 +222,22 @@ export default function ApprenantDetail() {
                 <ul className="space-y-1.5">
                   {files.map((f) => (
                     <li key={f.id} className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-100 rounded-md px-2.5 py-1.5" data-testid={`doc-file-${f.id}`}>
-                      <span className="flex-1 truncate text-slate-700 font-medium">{f.nom_fichier}</span>
+                      <button
+                        onClick={() => setPreviewDoc({
+                          id: f.id,
+                          original_filename: f.nom_fichier,
+                          content_type: f.content_type,
+                          size: f.taille,
+                          uploaded_at: f.uploaded_at,
+                          type: f.categorie,
+                          source: f.source,
+                        })}
+                        title="Voir le fichier"
+                        className="flex-1 truncate text-slate-700 font-medium text-left hover:text-brand-700 hover:underline cursor-pointer"
+                        data-testid={`doc-open-${f.id}`}
+                      >
+                        {f.nom_fichier}
+                      </button>
                       {f.source === "library" && (
                         <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-[9px] h-4 px-1.5 shrink-0" title={f.auto_attached ? "Rattachée automatiquement depuis la bibliothèque" : "Issue de la bibliothèque centrale"}>
                           {f.auto_attached ? "Auto" : "Lib"}

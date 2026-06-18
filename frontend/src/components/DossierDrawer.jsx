@@ -508,7 +508,18 @@ export default function DossierDrawer({ dossier, mode = "edit", onClose, onUpdat
                             className="flex items-center justify-between text-xs bg-slate-50 border border-slate-100 rounded px-2 py-1.5">
                             <span className="inline-flex items-center gap-2 truncate text-slate-700">
                               <FileText size={13} />
-                              <span className="truncate">{d.original_filename}</span>
+                              {d.is_cpf_import ? (
+                                <span className="truncate">{d.original_filename}</span>
+                              ) : (
+                                <button
+                                  onClick={() => setPreviewDoc(d)}
+                                  data-testid={`open-doc-${d.id}`}
+                                  title="Voir le fichier"
+                                  className="truncate text-left hover:text-navy hover:underline cursor-pointer"
+                                >
+                                  {d.original_filename}
+                                </button>
+                              )}
                               {d.is_cpf_import ? (
                                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
                                   Importée EDOF{d.statut_reglement ? ` · ${d.statut_reglement}` : ""}
