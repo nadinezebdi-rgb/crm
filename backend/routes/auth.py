@@ -55,6 +55,30 @@ async def logout(request: Request, response: Response):
     return {"ok": True}
 
 
+@router.post("/auth/change-password")
+async def change_password(request: Request, user: dict = Depends(deps.get_current_user)):
+    """Changer son mot de passe.
+    - Si l'utilisateur a déjà un mot de passe (auth_provider local), `current_password` est requis.
+    - Si l'utilisateur s'est connecté via Google sans mot de passe, il peut en définir un sans `current_password`.
+    """
+    body = await request.json()
+    new_password = (body.get("new_password") or "").strip()
+    current_password = body.get("current_password") or ""
+
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 8 caractères")
+
+    fresh = await deps.db.users.find_one({"user_id": user["user_id"]})
+    if fresh and fresh.get("password_hash"):
+        if not current_password or not deps.verify_password(current_password, fresh["password_hash"]):
+            raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    await deps.db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"password_hash": deps.hash_password(new_password), "auth_provider": "local"}},
+    )
+    return {"ok": True}
+
+
 @router.get("/auth/me")
 async def me(user: dict = Depends(deps.get_current_user)):
     return deps.public_user(user)

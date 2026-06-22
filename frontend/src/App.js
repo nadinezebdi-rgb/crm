@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
 
 import Login from "@/pages/Login";
+import ForgotPassword from "@/pages/ForgotPassword";
 import Register from "@/pages/Register";
 import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
@@ -86,6 +87,7 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/register" element={<Register />} />
       <Route
         element={
