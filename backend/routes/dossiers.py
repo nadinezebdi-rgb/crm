@@ -115,7 +115,42 @@ async def list_active_dossiers(user: dict = Depends(deps.get_current_user)):
     ).sort("created_at", -1).to_list(5000)
     for d in items:
         await attach_formateur(d)
+    await _enrich_doc_progress(items)
     return items
+
+
+async def _enrich_doc_progress(dossiers: list) -> None:
+    """Ajoute un champ `doc_progress: {count, total: 4, types: [...]}` sur chaque dossier.
+
+    Compte les types de documents distincts présents (devis_signe, attestation, facture, justificatif_paiement).
+    Une facture CPF importée compte comme "facture" (même règle que le drawer 4/4).
+    """
+    if not dossiers:
+        return
+    ids = [d["id"] for d in dossiers]
+    financeur_nums = list({d.get("financeur_nom") for d in dossiers if d.get("financeur_nom")})
+    types_by_dossier: dict = {}
+    async for doc in deps.db.dossier_documents.find(
+        {"dossier_id": {"$in": ids}, "type": {"$in": ["devis_signe", "attestation", "facture", "justificatif_paiement"]}},
+        {"_id": 0, "dossier_id": 1, "type": 1},
+    ):
+        types_by_dossier.setdefault(doc["dossier_id"], set()).add(doc["type"])
+    factures_by_numero: set = set()
+    if financeur_nums:
+        async for f in deps.db.factures_cpf.find(
+            {"numero_dossier": {"$in": financeur_nums}}, {"_id": 0, "numero_dossier": 1}
+        ):
+            factures_by_numero.add(f["numero_dossier"])
+    for d in dossiers:
+        types_present = types_by_dossier.get(d["id"], set()).copy()
+        if d.get("financeur_nom") and d["financeur_nom"] in factures_by_numero:
+            types_present.add("facture")
+        d["doc_progress"] = {
+            "count": len(types_present),
+            "total": 4,
+            "types": sorted(types_present),
+            "complete": len(types_present) >= 4,
+        }
 
 
 @router.get("/dossiers/closed")
@@ -222,19 +257,22 @@ async def get_linked_factures(dossier_id: str, user: dict = Depends(deps.get_cur
 async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_user)):
     """Renvoie tous les documents pertinents pour ce dossier :
       1) Documents uploadés directement (dossier_documents avec dossier_id == dossier_id)
-      2) Documents de la bibliothèque centrale rattachés à l'apprenant correspondant
-         (cross-link via dossier.financeur_nom == apprenant.dossier_cpf == library.auto_attach_meta.numero_dossier)
-    Ainsi les vrais PDF de factures uploadés via la bibliothèque apparaissent dans le dossier clôturé.
+      2) Documents de la bibliothèque centrale cross-linkés via :
+         - dossier.financeur_nom == library.auto_attach_meta.numero_dossier
+         - OU le n° de facture extrait du nom de fichier matche une facture CPF du dossier
     """
+    from routes.library import _normalize_invoice_number  # import paresseux pour éviter cycle
+
     items = await deps.db.dossier_documents.find(
         {"dossier_id": dossier_id}, {"_id": 0}
     ).sort("uploaded_at", -1).to_list(500)
-    # Cross-link via numero_dossier (EDOF) si présent
+    seen_ids = {it["id"] for it in items}
+
     dossier = await deps.db.dossiers.find_one({"id": dossier_id}, {"_id": 0, "financeur_nom": 1})
     if dossier and dossier.get("financeur_nom"):
         numero = dossier["financeur_nom"]
-        # Library docs auto-rattachées via le n° de dossier
-        seen_ids = {it["id"] for it in items}
+
+        # (A) Cross-link par numero_dossier (déjà attaché par l'auto-rattachement)
         async for libdoc in deps.db.dossier_documents.find(
             {
                 "auto_attach_meta.numero_dossier": numero,
@@ -246,7 +284,31 @@ async def list_documents(dossier_id: str, user: dict = Depends(deps.get_current_
                 libdoc["source"] = "library"
                 items.append(libdoc)
                 seen_ids.add(libdoc["id"])
-    # Tri final par date d'upload décroissante
+
+        # (B) Cross-link par numero_facture : matche les library PDF dont le nom contient
+        # un n° de facture présent dans factures_cpf du dossier
+        factures = await deps.db.factures_cpf.find(
+            {"numero_dossier": numero, "numero_facture": {"$nin": [None, ""]}},
+            {"_id": 0, "numero_facture": 1},
+        ).to_list(500)
+        normalized_targets = {
+            _normalize_invoice_number(f["numero_facture"]): f["numero_facture"]
+            for f in factures if _normalize_invoice_number(f.get("numero_facture"))
+        }
+        if normalized_targets:
+            async for libdoc in deps.db.dossier_documents.find(
+                {"type": "facture", "is_edof_source": {"$ne": True}},
+                {"_id": 0},
+            ):
+                if libdoc.get("id") in seen_ids:
+                    continue
+                normalized_doc = _normalize_invoice_number(libdoc.get("original_filename"))
+                if normalized_doc and normalized_doc in normalized_targets:
+                    libdoc["source"] = "library"
+                    libdoc["matched_facture"] = normalized_targets[normalized_doc]
+                    items.append(libdoc)
+                    seen_ids.add(libdoc["id"])
+
     items.sort(key=lambda d: d.get("uploaded_at") or "", reverse=True)
     return items
 
@@ -462,6 +524,61 @@ async def sync_status_from_factures_endpoint(user: dict = Depends(deps.get_curre
     Utile après un import EDOF correctif ou si on veut forcer la re-évaluation.
     """
     return await sync_dossier_statuses_from_factures()
+
+
+@router.post("/dossiers-admin/un-archive-incomplete")
+async def un_archive_incomplete_dossiers(user: dict = Depends(deps.get_current_user)):
+    """Ramène en statut actif tous les dossiers `regle` qui ont moins de 4 documents.
+
+    Action corrective : utile pour corriger un sur-archivage causé par d'anciennes règles
+    (avant l'exigence des 4 documents). On rabaisse à `facture` s'il y a au moins une
+    facture CPF liée, sinon à `en_formation`.
+    """
+    moved_to_facture = 0
+    moved_to_en_formation = 0
+    kept = 0
+    details: List[dict] = []
+
+    async for d in deps.db.dossiers.find(
+        {"status": "regle"},
+        {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "financeur_nom": 1, "date_cloture": 1},
+    ):
+        doc_types_count = await _dossier_doc_types_count(d)
+        if doc_types_count >= 4:
+            kept += 1
+            continue
+        # Détermine le nouveau statut
+        new_status = "en_formation"
+        if d.get("financeur_nom"):
+            has_facture = await deps.db.factures_cpf.find_one(
+                {"numero_dossier": d["financeur_nom"]}, {"_id": 1}
+            )
+            if has_facture:
+                new_status = "facture"
+        await deps.db.dossiers.update_one(
+            {"id": d["id"]},
+            {"$set": {"status": new_status, "updated_at": deps.now_utc().isoformat()},
+             "$unset": {"date_cloture": ""}},
+        )
+        if new_status == "facture":
+            moved_to_facture += 1
+        else:
+            moved_to_en_formation += 1
+        details.append({
+            "dossier_id": d["id"],
+            "stagiaire": f"{d.get('prenom', '')} {d.get('nom', '')}".strip(),
+            "from": "regle",
+            "to": new_status,
+            "doc_types_count": doc_types_count,
+        })
+
+    return {
+        "moved_to_facture": moved_to_facture,
+        "moved_to_en_formation": moved_to_en_formation,
+        "kept_in_regle": kept,
+        "total_moved": moved_to_facture + moved_to_en_formation,
+        "details": details,
+    }
 
 
 # ============================================================================

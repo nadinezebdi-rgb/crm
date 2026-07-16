@@ -19,9 +19,13 @@ import {
   Warning,
   ArrowsMerge,
   Trash,
+  Key,
+  Eye,
+  EyeSlash,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 function Section({ icon: Icon, title, description, children, mocked }) {
   return (
@@ -256,6 +260,111 @@ function DoublonBloc({ titre, children }) {
   );
 }
 
+function MonCompte() {
+  const { user } = useAuth();
+  const isGoogle = user?.auth_provider === "google" && !user?.has_password;
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (newPwd.length < 8) {
+      toast.error("Le mot de passe doit faire au moins 8 caractères");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      toast.error("Les deux mots de passe ne correspondent pas");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post("/auth/change-password", {
+        current_password: currentPwd || undefined,
+        new_password: newPwd,
+      });
+      toast.success("Mot de passe modifié avec succès");
+      setCurrentPwd("");
+      setNewPwd("");
+      setConfirmPwd("");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Modification impossible");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3" data-testid="change-password-form">
+      <div className="text-xs text-slate-600 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+        Connecté en tant que <strong>{user?.email}</strong> ({user?.auth_provider === "google" ? "Google" : "Email + mot de passe"})
+      </div>
+
+      {!isGoogle && (
+        <div>
+          <Label className="text-xs font-medium text-slate-700">Mot de passe actuel</Label>
+          <Input
+            type={showPwd ? "text" : "password"}
+            value={currentPwd}
+            onChange={(e) => setCurrentPwd(e.target.value)}
+            placeholder="Mot de passe actuel"
+            className="mt-1"
+            data-testid="current-password-input"
+            required
+          />
+        </div>
+      )}
+
+      <div>
+        <Label className="text-xs font-medium text-slate-700">Nouveau mot de passe</Label>
+        <div className="relative mt-1">
+          <Input
+            type={showPwd ? "text" : "password"}
+            value={newPwd}
+            onChange={(e) => setNewPwd(e.target.value)}
+            placeholder="Min. 8 caractères"
+            className="pr-10"
+            data-testid="new-password-input"
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPwd((v) => !v)}
+            aria-label={showPwd ? "Masquer" : "Afficher"}
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded"
+          >
+            {showPwd ? <EyeSlash size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs font-medium text-slate-700">Confirmer le nouveau mot de passe</Label>
+        <Input
+          type={showPwd ? "text" : "password"}
+          value={confirmPwd}
+          onChange={(e) => setConfirmPwd(e.target.value)}
+          placeholder="Retapez le nouveau mot de passe"
+          className="mt-1"
+          data-testid="confirm-password-input"
+          required
+        />
+      </div>
+
+      <Button
+        type="submit"
+        disabled={saving}
+        data-testid="change-password-submit"
+        className="bg-brand-600 hover:bg-brand-700"
+      >
+        <Key size={14} className="mr-1.5" /> {saving ? "Enregistrement…" : "Changer le mot de passe"}
+      </Button>
+    </form>
+  );
+}
+
 export default function Parametres() {
   return (
     <div className="p-6 lg:p-8" data-testid="parametres-page">
@@ -266,6 +375,10 @@ export default function Parametres() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Section icon={Key} title="Mon compte" description="Changez votre mot de passe (effet immédiat).">
+          <MonCompte />
+        </Section>
+
         <Section icon={Buildings} title="Identité de l'organisme" description="Vos coordonnées et informations légales — reprises sur tous les documents PDF.">
           <OrganismeIdentite />
         </Section>

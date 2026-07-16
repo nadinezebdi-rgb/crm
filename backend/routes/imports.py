@@ -279,6 +279,57 @@ async def delete_facture_cpf(facture_id: str, user: dict = Depends(deps.get_curr
     return {"deleted": 1}
 
 
+@router.post("/factures-cpf/{facture_id}/upload")
+async def upload_pdf_for_facture(
+    facture_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(deps.get_current_user),
+):
+    """Upload un PDF (ou image) et le rattache directement à la facture CPF spécifiée.
+
+    Le fichier est stocké dans la bibliothèque centrale avec `auto_attach_meta`
+    pré-rempli depuis la facture, garantissant son apparition dans le drawer du dossier.
+    """
+    facture = await deps.db.factures_cpf.find_one({"id": facture_id}, {"_id": 0})
+    if not facture:
+        raise HTTPException(404, "Facture introuvable")
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(413, "Fichier trop volumineux (max 50 Mo)")
+    from pathlib import Path as _Path
+    ext = _Path(file.filename or "").suffix.lstrip(".").lower() or "pdf"
+    doc_id = deps.new_id()
+    path = f"{APP_PREFIX}/factures-cpf/{doc_id}.{ext}"
+    result = await put_object(path, content, file.content_type or "application/pdf")
+    document = {
+        "id": doc_id,
+        "dossier_id": None,
+        "apprenant_id": None,
+        "type": "facture",
+        "filename": path.split("/")[-1],
+        "original_filename": file.filename or f"facture_{facture.get('numero_facture', doc_id)}.{ext}",
+        "content_type": file.content_type or "application/pdf",
+        "size": result.get("size", len(content)),
+        "storage_path": result.get("path", path),
+        "uploaded_at": deps.now_utc().isoformat(),
+        "auto_attached": True,
+        "auto_attach_meta": {
+            "numero_facture": facture.get("numero_facture"),
+            "numero_dossier": facture.get("numero_dossier"),
+        },
+    }
+    # Rattache aussi à l'apprenant si on en trouve un avec le bon dossier_cpf
+    if facture.get("numero_dossier"):
+        appr = await deps.db.apprenants.find_one(
+            {"dossier_cpf": facture["numero_dossier"]}, {"_id": 0, "id": 1}
+        )
+        if appr:
+            document["apprenant_id"] = appr["id"]
+    await deps.db.dossier_documents.insert_one(dict(document))
+    document.pop("_id", None)
+    return document
+
+
 @router.get("/factures-cpf/stats")
 async def factures_cpf_stats(user: dict = Depends(deps.get_current_user)):
     factures = await deps.db.factures_cpf.find({}, {"_id": 0, "montant": 1, "statut_reglement": 1, "date_emission": 1}).to_list(10000)

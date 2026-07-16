@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatApiError } from "@/lib/api";
-import { GoogleLogo, ShieldCheck, ArrowRight } from "@phosphor-icons/react";
+import { GoogleLogo, ShieldCheck, ArrowRight, Eye, EyeSlash } from "@phosphor-icons/react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -14,6 +14,7 @@ export default function Login() {
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const onSubmit = async (e) => {
@@ -131,17 +132,33 @@ export default function Login() {
               />
             </div>
             <div>
-              <Label htmlFor="password" className="text-xs font-medium text-slate-700">Mot de passe</Label>
-              <Input
-                id="password"
-                data-testid="login-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="mt-1"
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-xs font-medium text-slate-700">Mot de passe</Label>
+                <Link to="/forgot-password" data-testid="forgot-password-link" className="text-[11px] text-brand-600 hover:text-brand-700 font-medium">
+                  Mot de passe oublié ?
+                </Link>
+              </div>
+              <div className="relative mt-1">
+                <Input
+                  id="password"
+                  data-testid="login-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  data-testid="toggle-password-visibility"
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded"
+                >
+                  {showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
           </div>
 

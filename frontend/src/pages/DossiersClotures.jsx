@@ -4,13 +4,14 @@ import { formatDate } from "@/lib/dossiers";
 import FinanceurBadge from "@/components/FinanceurBadge";
 import DossierDrawer from "@/components/DossierDrawer";
 import { toast } from "sonner";
-import { MagnifyingGlass, Archive, Spinner, CaretRight } from "@phosphor-icons/react";
+import { MagnifyingGlass, Archive, Spinner, CaretRight, ArrowUUpLeft } from "@phosphor-icons/react";
 
 export default function DossiersClotures() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState(null);
+  const [cleaning, setCleaning] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -25,6 +26,27 @@ export default function DossiersClotures() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const cleanupIncomplete = async () => {
+    if (!window.confirm(
+      "Ramener en actif tous les dossiers archivés qui ont moins de 4 documents ?\n\n" +
+      "• Les dossiers avec 4/4 documents restent archivés\n" +
+      "• Les autres repassent en « Facturé » (s'il y a une facture CPF liée) ou « En action de formation »\n" +
+      "• La date de clôture est effacée"
+    )) return;
+    setCleaning(true);
+    try {
+      const { data } = await api.post("/dossiers-admin/un-archive-incomplete");
+      const msg = `${data.total_moved} dossier(s) ramené(s) en actif (${data.moved_to_facture} → Facturé, ${data.moved_to_en_formation} → En formation). ${data.kept_in_regle} dossier(s) gardé(s) (4/4 docs).`;
+      if (data.total_moved > 0) toast.success(msg);
+      else toast.info(msg);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Erreur");
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -41,9 +63,21 @@ export default function DossiersClotures() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)]">
-      <div className="px-8 py-5 border-b border-slate-200 bg-white">
-        <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display">Dossiers Clôturés</h1>
-        <p className="text-xs text-slate-500 mt-1">Coffre-fort numérique des dossiers réglés</p>
+      <div className="px-8 py-5 border-b border-slate-200 bg-white flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display">Dossiers Clôturés</h1>
+          <p className="text-xs text-slate-500 mt-1">Coffre-fort numérique des dossiers réglés</p>
+        </div>
+        <button
+          onClick={cleanupIncomplete}
+          disabled={cleaning || items.length === 0}
+          data-testid="cleanup-incomplete-btn"
+          title="Ramène en actif tous les dossiers archivés ayant moins de 4 documents (devis signé, attestation, facture, justificatif)"
+          className="h-9 px-3 text-sm font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 rounded-md inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {cleaning ? <Spinner size={14} className="animate-spin" /> : <ArrowUUpLeft size={14} weight="bold" />}
+          Vider les incomplets
+        </button>
       </div>
 
       <div className="p-8 bg-slate-50">
